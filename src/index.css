@@ -281,3 +281,66 @@ td {
   padding-left: 16px;
   font-size: 13px;
 }
+
+/* Milestone 5: chart components (src/components/charts/). */
+
+.chart-figure {
+  margin: 0 0 24px;
+  max-width: 100%;
+}
+
+.chart-figure svg {
+  max-width: 100%;
+  height: auto;
+  color: var(--text);
+}
+
+.chart-title {
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.chart-warnings {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.chart-warning-info {
+  color: var(--text);
+}
+
+.chart-warning-caution {
+  color: #a16207;
+}
+
+.chart-warning-blocking {
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.interval-type-selector .radio-option {
+  margin-bottom: 14px;
+}
+
+.chart-customization-panel .field {
+  margin-bottom: 14px;
+}
+
+.chart-customization-panel .checkbox-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-customization-panel .field-legend-like {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.chart-customization-panel .group-label-overrides {
+  border-top: 1px solid var(--accent);
+  padding-top: 12px;
+}
