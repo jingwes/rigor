@@ -42,6 +42,22 @@ export interface NormalityDiagnosticsPayload {
 }
 
 /**
+ * Milestone 8: one-way ANOVA for 3+ independent continuous groups. Each
+ * entry is one group's raw observations plus the label the student gave it
+ * (the position-based `a`/`b` mapping the 2-group payloads use doesn't scale
+ * to N groups, so labels travel with the data here instead).
+ */
+export interface OneWayAnovaGroupPayload {
+  label: string
+  values: number[]
+}
+
+export interface OneWayAnovaPayload {
+  /** 3 or more groups. */
+  groups: OneWayAnovaGroupPayload[]
+}
+
+/**
  * A request for one of the fixed, predefined analyses this worker exposes.
  * `analysisType` is the sole discriminant; there is no way to pass raw
  * Python through this contract.
@@ -59,6 +75,7 @@ export type StatisticsRequest =
       analysisType: 'normality-diagnostics'
       payload: NormalityDiagnosticsPayload
     }
+  | { id: string; analysisType: 'one-way-anova'; payload: OneWayAnovaPayload }
 
 export type AnalysisType = StatisticsRequest['analysisType']
 
@@ -143,6 +160,67 @@ export interface NormalityDiagnosticsResult {
   skewness: number | null
 }
 
+/**
+ * Milestone 8: per-group descriptive summary for a one-way ANOVA, identical
+ * in shape to `DescriptivesResult` plus the group's own label.
+ */
+export interface OneWayAnovaGroupSummary extends DescriptivesResult {
+  label: string
+}
+
+/**
+ * The omnibus (overall) test result. `method` is always `'welch_anova'` -
+ * see `anova.py`'s module docstring for why Rigor uses Welch's unequal-
+ * variance one-way ANOVA (verified against real R output) rather than the
+ * classic equal-variance `f_oneway`, consistent with this app's existing
+ * preference for Welch's t-test over Student's t-test for two groups.
+ *
+ * Deliberately has NO effect-size field - see `anova.py`'s docstring for why
+ * eta-squared/omega-squared is omitted rather than guessed.
+ */
+export interface OneWayAnovaOmnibusResult {
+  method: 'welch_anova'
+  fStatistic: number
+  /** k - 1, where k is the number of groups. */
+  numeratorDf: number
+  /** Welch-Satterthwaite-style denominator df (fractional). */
+  denominatorDf: number
+  /** Two-sided p-value for the omnibus test. */
+  pValue: number
+}
+
+/**
+ * One pairwise post-hoc comparison (Welch's two-sample t-test between two
+ * of the groups in this analysis). `pValueRaw` is the UNCORRECTED p-value
+ * for this pair alone - it must never be shown to a student as "the"
+ * result. `pValueAdjusted` (Holm-Bonferroni, corrected across every pair in
+ * this analysis) is the value to display and interpret.
+ */
+export interface OneWayAnovaPairwiseComparison {
+  groupALabel: string
+  groupBLabel: string
+  /** mean(groupA) - mean(groupB). */
+  meanDifference: number
+  tStatistic: number
+  degreesOfFreedom: number
+  /** Raw, uncorrected two-sided p-value for this single pair. Display only for transparency, never as the primary result. */
+  pValueRaw: number
+  /** Holm-Bonferroni-adjusted two-sided p-value, corrected across all pairs in this analysis. This is the value to display and interpret. */
+  pValueAdjusted: number
+  /** Hedges' g (bias-corrected standardized mean difference), or `null` if undefined. */
+  effectSize: number | null
+  effectSizeMethod: 'hedges_g'
+}
+
+export interface OneWayAnovaResult {
+  /** Per-group descriptives, in the same order as the request's `groups`. */
+  groups: OneWayAnovaGroupSummary[]
+  omnibus: OneWayAnovaOmnibusResult
+  /** Every unordered pair of groups, in the order the groups were given. */
+  pairwiseComparisons: OneWayAnovaPairwiseComparison[]
+  pairwiseCorrectionMethod: 'holm_bonferroni'
+}
+
 export type AnalysisResult =
   | { analysisType: 'descriptives'; result: DescriptivesResult }
   | {
@@ -151,6 +229,7 @@ export type AnalysisResult =
     }
   | { analysisType: 'paired-t-test'; result: PairedTTestResult }
   | { analysisType: 'normality-diagnostics'; result: NormalityDiagnosticsResult }
+  | { analysisType: 'one-way-anova'; result: OneWayAnovaResult }
 
 export interface StatisticsErrorInfo {
   message: string

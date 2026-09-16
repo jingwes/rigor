@@ -30,9 +30,9 @@ export const EXPLANATIONS = {
   'CONT-3PLUS-INDEPENDENT-001':
     'Your outcome is numerical and you have three or more independent groups (different ' +
     'subjects in each group). A one-way ANOVA is the recommended analysis, consistent with ' +
-    'your described design. Note: if the overall (omnibus) ANOVA result is followed by ' +
-    'pairwise comparisons between individual groups, those comparisons require correction for ' +
-    'multiple testing - this version of Rigor does not yet compute that correction.',
+    'your described design. Note: the overall (omnibus) ANOVA result is followed by pairwise ' +
+    'comparisons between individual groups; those comparisons require correction for multiple ' +
+    'testing, which Rigor applies automatically using the Holm-Bonferroni step-down correction.',
 
   'CONT-3PLUS-REPEATED-001':
     'Your experiment contains more than two repeated (or paired) measurements from the same ' +

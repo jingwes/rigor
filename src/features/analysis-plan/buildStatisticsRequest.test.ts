@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Dataset, DatasetRow, ParsingIssue } from '../../models/Dataset'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
-import { buildStatisticsRequest, buildStatisticsRequestFromAggregatedUnits } from './buildStatisticsRequest'
+import {
+  buildOneWayAnovaRequest,
+  buildStatisticsRequest,
+  buildStatisticsRequestFromAggregatedUnits,
+} from './buildStatisticsRequest'
 import type { UnitAggregate } from './aggregateByExperimentalUnit'
 
 function design(overrides: Partial<ExperimentDesign> = {}): ExperimentDesign {
@@ -317,6 +321,181 @@ describe('buildStatisticsRequest - paired (paired-t-test)', () => {
     }
     const result = buildStatisticsRequest(pairedDesign(), dataset, 'paired-t-test')
     expect(result.status).toBe('insufficient-data')
+  })
+})
+
+describe('buildOneWayAnovaRequest (Milestone 8)', () => {
+  function threeGroupDesign(overrides: Partial<ExperimentDesign> = {}): ExperimentDesign {
+    return design({
+      groups: { count: 3, names: ['Control', 'Low dose', 'High dose'] },
+      relationship: 'independent',
+      ...overrides,
+    })
+  }
+
+  it('groups rows by the design group names, in declared order', () => {
+    const dataset: Dataset = {
+      format: 'independent-groups',
+      columns: ['sample_id', 'group', 'value'],
+      rows: [
+        row({ rowId: 'r1', group: 'Control', value: 10 }),
+        row({ rowId: 'r2', group: 'Control', value: 11 }),
+        row({ rowId: 'r3', group: 'Control', value: 9 }),
+        row({ rowId: 'r4', group: 'Low dose', value: 15 }),
+        row({ rowId: 'r5', group: 'Low dose', value: 16 }),
+        row({ rowId: 'r6', group: 'Low dose', value: 14 }),
+        row({ rowId: 'r7', group: 'High dose', value: 20 }),
+        row({ rowId: 'r8', group: 'High dose', value: 21 }),
+        row({ rowId: 'r9', group: 'High dose', value: 19 }),
+      ],
+      issues: [],
+    }
+
+    const result = buildOneWayAnovaRequest(threeGroupDesign(), dataset)
+
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('expected ready')
+    expect(result.request.analysisType).toBe('one-way-anova')
+    expect(result.request.payload.groups).toEqual([
+      { label: 'Control', values: [10, 11, 9] },
+      { label: 'Low dose', values: [15, 16, 14] },
+      { label: 'High dose', values: [20, 21, 19] },
+    ])
+    expect(result.groupLabels).toEqual(['Control', 'Low dose', 'High dose'])
+  })
+
+  it('excludes rows with an "excluded"-severity issue, keeps "warning"-severity rows', () => {
+    const dataset: Dataset = {
+      format: 'independent-groups',
+      columns: ['sample_id', 'group', 'value'],
+      rows: [
+        row({ rowId: 'r1', group: 'Control', value: 10 }),
+        row({ rowId: 'r2', group: 'Control', value: 999 }), // excluded
+        row({ rowId: 'r3', group: 'Control', value: 9 }),
+        row({ rowId: 'r4', group: 'Low dose', value: 15 }),
+        row({ rowId: 'r5', group: 'Low dose', value: 16 }), // warning, kept
+        row({ rowId: 'r6', group: 'High dose', value: 20 }),
+        row({ rowId: 'r7', group: 'High dose', value: 21 }),
+      ],
+      issues: [
+        { rowId: 'r2', severity: 'excluded', message: 'outlier' },
+        { rowId: 'r5', severity: 'warning', message: 'duplicate id, kept' },
+      ],
+    }
+
+    const result = buildOneWayAnovaRequest(threeGroupDesign(), dataset)
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('expected ready')
+    expect(result.request.payload.groups).toEqual([
+      { label: 'Control', values: [10, 9] },
+      { label: 'Low dose', values: [15, 16] },
+      { label: 'High dose', values: [20, 21] },
+    ])
+  })
+
+  it('ignores rows whose group does not match any declared group name', () => {
+    const dataset: Dataset = {
+      format: 'independent-groups',
+      columns: ['sample_id', 'group', 'value'],
+      rows: [
+        row({ rowId: 'r1', group: 'Control', value: 10 }),
+        row({ rowId: 'r2', group: 'Control', value: 11 }),
+        row({ rowId: 'r3', group: 'Contrl', value: 999 }), // typo
+        row({ rowId: 'r4', group: 'Low dose', value: 15 }),
+        row({ rowId: 'r5', group: 'Low dose', value: 16 }),
+        row({ rowId: 'r6', group: 'High dose', value: 20 }),
+        row({ rowId: 'r7', group: 'High dose', value: 21 }),
+      ],
+      issues: [],
+    }
+
+    const result = buildOneWayAnovaRequest(threeGroupDesign(), dataset)
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('expected ready')
+    expect(result.request.payload.groups.map((g) => g.values)).toEqual([
+      [10, 11],
+      [15, 16],
+      [20, 21],
+    ])
+  })
+
+  it('reports insufficient-data when fewer than 3 groups are declared', () => {
+    const result = buildOneWayAnovaRequest(design(), {
+      format: 'independent-groups',
+      columns: [],
+      rows: [],
+      issues: [],
+    })
+    expect(result.status).toBe('insufficient-data')
+    if (result.status !== 'insufficient-data') throw new Error('expected insufficient-data')
+    expect(result.message).toMatch(/at least 3/i)
+  })
+
+  it('reports insufficient-data when ANY declared group has fewer than 2 usable values', () => {
+    const dataset: Dataset = {
+      format: 'independent-groups',
+      columns: ['sample_id', 'group', 'value'],
+      rows: [
+        row({ rowId: 'r1', group: 'Control', value: 10 }),
+        row({ rowId: 'r2', group: 'Control', value: 11 }),
+        row({ rowId: 'r3', group: 'Low dose', value: 15 }), // only 1 usable value
+        row({ rowId: 'r4', group: 'High dose', value: 20 }),
+        row({ rowId: 'r5', group: 'High dose', value: 21 }),
+      ],
+      issues: [],
+    }
+
+    const result = buildOneWayAnovaRequest(threeGroupDesign(), dataset)
+    expect(result.status).toBe('insufficient-data')
+    if (result.status !== 'insufficient-data') throw new Error('expected insufficient-data')
+    expect(result.message).toMatch(/not enough valid data/i)
+    expect(result.message).toMatch(/Low dose/)
+  })
+
+  it('rows missing a numeric value do not count toward any group', () => {
+    const dataset: Dataset = {
+      format: 'independent-groups',
+      columns: ['sample_id', 'group', 'value'],
+      rows: [
+        row({ rowId: 'r1', group: 'Control', value: 10 }),
+        row({ rowId: 'r2', group: 'Control', value: 11 }),
+        row({ rowId: 'r3', group: 'Low dose' }), // no numeric value
+        row({ rowId: 'r4', group: 'Low dose', value: 16 }),
+        row({ rowId: 'r5', group: 'High dose', value: 20 }),
+        row({ rowId: 'r6', group: 'High dose', value: 21 }),
+      ],
+      issues: [{ rowId: 'r3', severity: 'excluded', message: 'missing a value' }],
+    }
+
+    const result = buildOneWayAnovaRequest(threeGroupDesign(), dataset)
+    expect(result.status).toBe('insufficient-data')
+  })
+
+  it('supports more than 3 declared groups', () => {
+    const dataset: Dataset = {
+      format: 'independent-groups',
+      columns: ['sample_id', 'group', 'value'],
+      rows: [
+        row({ rowId: 'r1', group: 'A', value: 1 }),
+        row({ rowId: 'r2', group: 'A', value: 2 }),
+        row({ rowId: 'r3', group: 'B', value: 3 }),
+        row({ rowId: 'r4', group: 'B', value: 4 }),
+        row({ rowId: 'r5', group: 'C', value: 5 }),
+        row({ rowId: 'r6', group: 'C', value: 6 }),
+        row({ rowId: 'r7', group: 'D', value: 7 }),
+        row({ rowId: 'r8', group: 'D', value: 8 }),
+      ],
+      issues: [],
+    }
+
+    const result = buildOneWayAnovaRequest(
+      threeGroupDesign({ groups: { count: 4, names: ['A', 'B', 'C', 'D'] } }),
+      dataset,
+    )
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('expected ready')
+    expect(result.request.payload.groups).toHaveLength(4)
+    expect(result.groupLabels).toEqual(['A', 'B', 'C', 'D'])
   })
 })
 

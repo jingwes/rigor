@@ -31,12 +31,14 @@
 import type { Dataset, DatasetRow } from '../../models/Dataset'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type {
+  OneWayAnovaPayload,
   PairedTTestPayload,
   WelchTwoSampleTTestPayload,
 } from '../../statistics/types'
 import type { UnitAggregate } from './aggregateByExperimentalUnit'
 
 const MIN_USABLE_VALUES_PER_ARM = 2
+const MIN_GROUPS_FOR_ANOVA = 3
 
 export type SupportedStatisticsAnalysisType =
   | 'welch-two-sample-t-test'
@@ -191,6 +193,108 @@ function buildPairedRequest(
     groupALabel,
     groupBLabel,
   }
+}
+
+export type BuildOneWayAnovaRequestResult =
+  | {
+      status: 'ready'
+      request: { analysisType: 'one-way-anova'; payload: OneWayAnovaPayload }
+      /** The design's group names, in the same order as `request.payload.groups`. */
+      groupLabels: string[]
+    }
+  | { status: 'insufficient-data'; message: string }
+
+/**
+ * Milestone 8: builds a `one-way-anova` request for 3+ independent
+ * continuous groups. Groups usable (non-`"excluded"`-severity) rows by
+ * `group`, matched to `design.groups.names` by exact name (same convention
+ * `buildIndependentGroupsRequest` uses for 2 groups) - a row whose `group`
+ * doesn't match any declared name is not silently guessed into one, it is
+ * simply not counted.
+ *
+ * Judgment call (mirrors the 2-group "insufficient-data" behavior, which
+ * requires BOTH declared groups to individually have enough data rather
+ * than silently dropping a thin one): this requires EVERY group named in
+ * the design to have at least `MIN_USABLE_VALUES_PER_ARM` usable values, not
+ * just at least 3 groups overall. If the design declares 4 groups and one of
+ * them ends up with too little usable data, this reports "insufficient
+ * data" for the whole analysis rather than silently running a 3-group ANOVA
+ * on the remaining groups - the omitted group's absence would otherwise be
+ * invisible to the student.
+ */
+function buildOneWayAnovaRequestFromDesign(
+  design: ExperimentDesign,
+  dataset: Dataset,
+): BuildOneWayAnovaRequestResult {
+  const groupLabels = design.groups.names
+
+  if (groupLabels.length < MIN_GROUPS_FOR_ANOVA) {
+    return {
+      status: 'insufficient-data',
+      message:
+        `This analysis needs at least ${MIN_GROUPS_FOR_ANOVA} named groups from your experiment ` +
+        `design, but only ${groupLabels.length} ${groupLabels.length === 1 ? 'was' : 'were'} available.`,
+    }
+  }
+
+  const excludedRowIds = excludedRowIdSet(dataset)
+  const valuesByGroup = new Map<string, number[]>()
+  for (const label of groupLabels) valuesByGroup.set(label, [])
+
+  for (const row of dataset.rows) {
+    if (dataset.format !== 'independent-groups') continue
+    if (!isUsableRow(row, excludedRowIds)) continue
+    if (row.group !== undefined && valuesByGroup.has(row.group)) {
+      valuesByGroup.get(row.group)?.push(row.value as number)
+    }
+    // As with the 2-group path, a row whose `group` doesn't match any
+    // declared name is not counted toward any group.
+  }
+
+  const shortfalls = groupLabels.filter(
+    (label) => (valuesByGroup.get(label)?.length ?? 0) < MIN_USABLE_VALUES_PER_ARM,
+  )
+
+  if (shortfalls.length > 0) {
+    const detail = groupLabels
+      .map((label) => `'${label}' has ${valuesByGroup.get(label)?.length ?? 0}`)
+      .join(', ')
+    return {
+      status: 'insufficient-data',
+      message:
+        `Not enough valid data to run this analysis yet: every group needs at least ` +
+        `${MIN_USABLE_VALUES_PER_ARM} usable values, but ${shortfalls.map((l) => `'${l}'`).join(', ')} ` +
+        `${shortfalls.length === 1 ? 'does' : 'do'} not (${detail}). Excluded or missing values don't ` +
+        "count - check the data preview above for what was flagged.",
+    }
+  }
+
+  return {
+    status: 'ready',
+    request: {
+      analysisType: 'one-way-anova',
+      payload: {
+        groups: groupLabels.map((label) => ({
+          label,
+          values: valuesByGroup.get(label) as number[],
+        })),
+      },
+    },
+    groupLabels,
+  }
+}
+
+/**
+ * Public entry point for building a `one-way-anova` request from a design +
+ * its validated dataset. Callers are expected to have already confirmed
+ * (via `recommendAnalysis(design)`) that `'one-way-anova'` is the
+ * recommended, `status: 'supported'` analysis for this design.
+ */
+export function buildOneWayAnovaRequest(
+  design: ExperimentDesign,
+  dataset: Dataset,
+): BuildOneWayAnovaRequestResult {
+  return buildOneWayAnovaRequestFromDesign(design, dataset)
 }
 
 /**

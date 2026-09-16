@@ -13,6 +13,7 @@
 
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type {
+  OneWayAnovaResult,
   PairedTTestResult,
   WelchTwoSampleTTestResult,
 } from '../../statistics/types'
@@ -24,14 +25,31 @@ export type MethodsAnalysis =
       result: WelchTwoSampleTTestResult
     }
   | { analysisType: 'paired-t-test'; result: PairedTTestResult }
+  | { analysisType: 'one-way-anova'; result: OneWayAnovaResult }
+
+/**
+ * The subset of `MethodsAnalysis` used by the original 2-group results/
+ * report UI (`ResultsView.tsx`/`ReportView.tsx`'s 2-group branch), which
+ * assumes a shared shape (`meanDifference`/`tStatistic`/`effectSizeMethod`/
+ * etc.) that `'one-way-anova'`'s result does not have.
+ */
+export type TwoGroupMethodsAnalysis = Extract<
+  MethodsAnalysis,
+  { analysisType: 'welch-two-sample-t-test' | 'paired-t-test' }
+>
 
 export interface GenerateMethodsTextInput {
   design: ExperimentDesign
   analysis: MethodsAnalysis
-  /** The design group name mapped to the analysis's "a" arm/condition. */
-  groupALabel: string
-  /** The design group name mapped to the analysis's "b" arm/condition. */
-  groupBLabel: string
+  /**
+   * The design group name mapped to the analysis's "a" arm/condition.
+   * Only meaningful for the two 2-group analyses - `'one-way-anova'` reads
+   * its group labels from `analysis.result.groups` instead, so this is
+   * unused (and may be omitted) for that analysis type.
+   */
+  groupALabel?: string
+  /** The design group name mapped to the analysis's "b" arm/condition. See `groupALabel`. */
+  groupBLabel?: string
   /**
    * How many rows were excluded from this analysis due to a parsing/
    * validation problem (an `"excluded"`-severity `ParsingIssue`). Pass the
@@ -50,6 +68,7 @@ export interface GenerateMethodsTextInput {
 const TEST_NAME: Record<MethodsAnalysis['analysisType'], string> = {
   'welch-two-sample-t-test': "two-sided Welch's two-sample t-test",
   'paired-t-test': 'two-sided paired-samples t-test',
+  'one-way-anova': "Welch's (unequal-variance) one-way ANOVA",
 }
 
 function capitalize(text: string): string {
@@ -127,13 +146,35 @@ export function generateMethodsText(input: GenerateMethodsTextInput): string {
     if (aggregation) {
       sentences.push(describeAggregationForMethods(aggregation, unitLabel))
     }
-  } else {
+  } else if (analysis.analysisType === 'paired-t-test') {
     const { nPairs } = analysis.result
     sentences.push(
       `${outcomeSentence} was compared between two paired conditions, "${groupALabel}" and ` +
         `"${groupBLabel}", using a ${testName}, on ${nPairs} matched ` +
         `${pluralize(nPairs, unitLabel)} measured under both conditions.`,
     )
+  } else {
+    const { groups, pairwiseComparisons } = analysis.result
+    const groupDescriptions = groups
+      .map((g) => `"${g.label}" (n = ${g.n} ${pluralize(g.n, unitLabel)})`)
+      .join(', ')
+    sentences.push(
+      `${outcomeSentence} was compared across ${groups.length} independent groups, ` +
+        `${groupDescriptions}, using a ${testName}. Welch's version was used rather than the ` +
+        "classic equal-variance one-way ANOVA because it does not assume the groups have equal " +
+        'variances.',
+    )
+    sentences.push(
+      `This omnibus test was followed by ${pairwiseComparisons.length} pairwise comparisons ` +
+        "between individual groups (each a two-sided Welch's two-sample t-test), with p-values " +
+        'corrected for multiple testing using the Holm-Bonferroni step-down procedure. Testing ' +
+        'many pairs independently increases the chance of false-positive results, so only the ' +
+        'Holm-Bonferroni-adjusted p-values should be interpreted as the result of each ' +
+        'comparison.',
+    )
+    if (aggregation) {
+      sentences.push(describeAggregationForMethods(aggregation, unitLabel))
+    }
   }
 
   if (excludedObservationCount > 0) {

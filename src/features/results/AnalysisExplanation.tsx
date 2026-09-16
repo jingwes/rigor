@@ -52,10 +52,11 @@ export function AnalysisExplanation({
       {notYetImplemented && recommendation.status === 'supported' && (
         <p>
           A recommended analysis was identified for your design, but this version of Rigor's
-          statistics engine only computes a Welch two-sample t-test or a paired t-test. The
-          recommended analysis here hasn't been implemented and verified in this app yet, so no
-          results can be shown - your data has still been kept, in case this becomes available in
-          a future version.
+          statistics engine doesn't compute this specific analysis yet (currently implemented:
+          Welch's two-sample t-test, the paired t-test, and one-way ANOVA with Holm-Bonferroni-
+          corrected pairwise comparisons). The recommended analysis here hasn't been implemented
+          and verified in this app yet, so no results can be shown - your data has still been
+          kept, in case this becomes available in a future version.
         </p>
       )}
 

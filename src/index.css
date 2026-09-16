@@ -368,6 +368,20 @@ td {
   margin: 12px 0;
 }
 
+/* Milestone 8: one-way ANOVA pairwise-comparisons table. */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.results-table th,
+.results-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--accent);
+}
+
 .normality-groups {
   display: flex;
   flex-wrap: wrap;

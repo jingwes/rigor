@@ -17,10 +17,12 @@ import type { PyodideInterface } from 'pyodide'
 import descriptivesSource from './python/descriptives.py?raw'
 import twoGroupSource from './python/two_group.py?raw'
 import normalitySource from './python/normality.py?raw'
+import anovaSource from './python/anova.py?raw'
 import type {
   AnalysisResult,
   DescriptivesResult,
   NormalityDiagnosticsResult,
+  OneWayAnovaResult,
   PairedTTestResult,
   StatisticsRequest,
   StatisticsResponse,
@@ -36,6 +38,10 @@ export function installStatisticsPython(pyodide: PyodideInterface): void {
   pyodide.runPython(descriptivesSource)
   pyodide.runPython(twoGroupSource)
   pyodide.runPython(normalitySource)
+  // anova.py calls `welch_two_sample_t_test_json` (from two_group.py) and
+  // `_descriptive_summary`/`_validate_numeric_list` (from descriptives.py)
+  // directly out of the shared namespace, so it must be installed last.
+  pyodide.runPython(anovaSource)
 }
 
 /** Name of the Python entry point for each analysis type, kept in one place. */
@@ -44,6 +50,7 @@ const ENTRY_POINT_BY_ANALYSIS_TYPE = {
   'welch-two-sample-t-test': 'welch_two_sample_t_test_json',
   'paired-t-test': 'paired_t_test_json',
   'normality-diagnostics': 'normality_diagnostics_json',
+  'one-way-anova': 'one_way_anova_json',
 } as const satisfies Record<StatisticsRequest['analysisType'], string>
 
 /**
@@ -108,6 +115,14 @@ function computeResult(
         request.payload,
       ) as NormalityDiagnosticsResult
       return { analysisType: 'normality-diagnostics', result }
+    }
+    case 'one-way-anova': {
+      const result = callJsonEntryPoint(
+        pyodide,
+        ENTRY_POINT_BY_ANALYSIS_TYPE['one-way-anova'],
+        request.payload,
+      ) as OneWayAnovaResult
+      return { analysisType: 'one-way-anova', result }
     }
   }
 }

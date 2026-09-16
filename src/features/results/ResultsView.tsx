@@ -23,7 +23,7 @@ import {
 import { formatPValue } from '../report/formatPValue'
 import { formatStatistic } from '../report/formatStatistic'
 import { generateInterpretationText } from '../report/generateInterpretationText'
-import type { MethodsAnalysis } from '../report/generateMethodsText'
+import type { TwoGroupMethodsAnalysis } from '../report/generateMethodsText'
 import {
   describeAggregationSampleSize,
   type NestedAggregationResult,
@@ -38,14 +38,15 @@ const EFFECT_SIZE_LABEL: Record<
   cohens_d_z: 'Cohen’s d₂ (paired)',
 }
 
-const TEST_DISPLAY_NAME: Record<MethodsAnalysis['analysisType'], string> = {
+const TEST_DISPLAY_NAME: Record<TwoGroupMethodsAnalysis['analysisType'], string> = {
   'welch-two-sample-t-test': "Welch's two-sample t-test",
   'paired-t-test': 'Paired-samples t-test',
 }
 
 export interface ResultsViewProps {
   design: ExperimentDesign
-  analysis: MethodsAnalysis
+  /** Only the 2-group analyses - see `AnovaResultsView` for `'one-way-anova'`. */
+  analysis: TwoGroupMethodsAnalysis
   groupALabel: string
   groupBLabel: string
   /** Post-exclusion values actually sent to the worker for arm/condition "a". */

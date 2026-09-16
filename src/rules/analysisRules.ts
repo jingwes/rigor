@@ -29,8 +29,9 @@ const MULTIPLE_COMPARISONS_WARNING: Warning = {
   id: 'multiple-comparisons-correction-needed',
   message:
     'Following this omnibus test with pairwise comparisons between individual groups requires ' +
-    'correction for multiple testing. This version of Rigor does not yet compute that ' +
-    'correction.',
+    'correction for multiple testing. Rigor computes these pairwise comparisons using the ' +
+    'Holm-Bonferroni step-down correction automatically - only the corrected p-values should be ' +
+    'interpreted, not the raw, uncorrected ones.',
   severity: 'caution',
 }
 

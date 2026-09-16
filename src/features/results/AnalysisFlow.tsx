@@ -5,11 +5,7 @@ import type { ProjectAnalysisResult, RigorProject } from '../../models/ProjectFi
 import { PROJECT_FILE_SCHEMA_VERSION } from '../../models/ProjectFile'
 import { recommendAnalysis } from '../../rules/analysisRules'
 import { analyzeReplicationStructure } from '../../rules/replicationRules'
-import type {
-  NormalityDiagnosticsResult,
-  PairedTTestResult,
-  WelchTwoSampleTTestResult,
-} from '../../statistics/types'
+import type { NormalityDiagnosticsResult } from '../../statistics/types'
 import {
   onStatisticsProgress,
   runStatistics,
@@ -22,13 +18,16 @@ import {
   type NestedAggregationResult,
 } from '../analysis-plan/aggregateByExperimentalUnit'
 import {
+  buildOneWayAnovaRequest,
   buildStatisticsRequest,
   buildStatisticsRequestFromAggregatedUnits,
+  type BuildOneWayAnovaRequestResult,
   type BuildStatisticsRequestResult,
 } from '../analysis-plan/buildStatisticsRequest'
 import { downloadProjectFile } from '../report/exportProject'
-import type { MethodsAnalysis } from '../report/generateMethodsText'
+import type { MethodsAnalysis, TwoGroupMethodsAnalysis } from '../report/generateMethodsText'
 import { AnalysisExplanation } from './AnalysisExplanation'
+import { AnovaResultsView, type AnovaGroupNormalityState } from './AnovaResultsView'
 import { PseudoreplicationCheckStep } from './PseudoreplicationCheckStep'
 import { ResultsView } from './ResultsView'
 
@@ -39,27 +38,50 @@ export interface AnalysisFlowProps {
   onOpenReport: (context: AnalysisReportContext) => void
 }
 
-/** Everything the printable report view needs, handed up once results exist. */
-export interface AnalysisReportContext {
-  design: ExperimentDesign
-  dataset: Dataset
-  analysis: MethodsAnalysis
-  groupALabel: string
-  groupBLabel: string
-  valuesA: number[]
-  valuesB: number[]
-  normalityA?: NormalityDiagnosticsResult
-  normalityB?: NormalityDiagnosticsResult
-  excludedObservationCount: number
-  /**
-   * Milestone 7: present only when the analysis ran on aggregated
-   * (technical-replicate-averaged) experimental-unit values rather than raw
-   * independent-groups/paired rows - the audit record of that decision.
-   */
-  aggregation?: NestedAggregationResult
-}
+/**
+ * Everything the printable report view needs, handed up once results exist.
+ * A discriminated union: the original 2-group shape (`kind: 'two-group'`,
+ * unchanged from Milestone 6/7) or Milestone 8's 3+-group ANOVA shape
+ * (`kind: 'one-way-anova'`) - `ReportView` branches on `kind`.
+ */
+export type AnalysisReportContext =
+  | {
+      kind: 'two-group'
+      design: ExperimentDesign
+      dataset: Dataset
+      analysis: TwoGroupMethodsAnalysis
+      groupALabel: string
+      groupBLabel: string
+      valuesA: number[]
+      valuesB: number[]
+      normalityA?: NormalityDiagnosticsResult
+      normalityB?: NormalityDiagnosticsResult
+      excludedObservationCount: number
+      /**
+       * Milestone 7: present only when the analysis ran on aggregated
+       * (technical-replicate-averaged) experimental-unit values rather than
+       * raw independent-groups/paired rows - the audit record of that
+       * decision.
+       */
+      aggregation?: NestedAggregationResult
+    }
+  | {
+      kind: 'one-way-anova'
+      design: ExperimentDesign
+      dataset: Dataset
+      analysis: Extract<MethodsAnalysis, { analysisType: 'one-way-anova' }>
+      /** The exact groups (label + post-exclusion values) sent to the worker. */
+      groups: { label: string; values: number[] }[]
+      /** Normality diagnostics per group, keyed by group label (only entries that finished successfully). */
+      normalityByGroup: Record<string, NormalityDiagnosticsResult>
+      excludedObservationCount: number
+    }
 
-const IMPLEMENTED_ANALYSIS_TYPES = new Set(['welch-two-sample-t-test', 'paired-t-test'])
+const IMPLEMENTED_ANALYSIS_TYPES = new Set([
+  'welch-two-sample-t-test',
+  'paired-t-test',
+  'one-way-anova',
+])
 
 const LOADING_STAGE_LABEL: Record<LoadingStage, string> = {
   idle: 'Preparing the statistics engine…',
@@ -79,9 +101,19 @@ type FlowState =
   | { kind: 'error'; message: string }
   | {
       kind: 'ready'
-      analysis: MethodsAnalysis
+      analysis: TwoGroupMethodsAnalysis
       normalityA: NormalityState
       normalityB: NormalityState
+    }
+
+/** Milestone 8: the one-way-ANOVA analog of `FlowState`, above. */
+type AnovaFlowState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | {
+      kind: 'ready'
+      analysis: Extract<MethodsAnalysis, { analysisType: 'one-way-anova' }>
+      normalityByGroup: Record<string, AnovaGroupNormalityState>
     }
 
 function excludedRowCount(dataset: Dataset): number {
@@ -156,8 +188,17 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     return summarizeAggregation(aggregateByExperimentalUnit(dataset))
   }, [isNestedIndependent, dataset, replicationSummary, aggregationConfirmed])
 
+  const isTwoGroupAnalysis =
+    isImplemented &&
+    recommendation.status === 'supported' &&
+    (recommendation.analysisType === 'welch-two-sample-t-test' ||
+      recommendation.analysisType === 'paired-t-test')
+
+  const isAnovaRecommended =
+    recommendation.status === 'supported' && recommendation.analysisType === 'one-way-anova'
+
   const buildResult: BuildStatisticsRequestResult | undefined = useMemo(() => {
-    if (!isImplemented || recommendation.status !== 'supported') return undefined
+    if (!isTwoGroupAnalysis || recommendation.status !== 'supported') return undefined
     const analysisType = recommendation.analysisType as
       | 'welch-two-sample-t-test'
       | 'paired-t-test'
@@ -168,7 +209,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     }
 
     return buildStatisticsRequest(design, dataset, analysisType)
-  }, [design, dataset, isImplemented, recommendation, isNestedIndependent, aggregationResult])
+  }, [design, dataset, isTwoGroupAnalysis, recommendation, isNestedIndependent, aggregationResult])
 
   const [state, setState] = useState<FlowState>({ kind: 'loading' })
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('idle')
@@ -193,7 +234,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
         return
       }
 
-      const analysis = mainResponse.result as MethodsAnalysis
+      const analysis = mainResponse.result as TwoGroupMethodsAnalysis
       setState({
         kind: 'ready',
         analysis,
@@ -227,6 +268,81 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     }
   }, [buildResult])
 
+  // --- Milestone 8: one-way ANOVA (3+ independent continuous groups) -------
+  // A parallel, self-contained state machine alongside the 2-group one
+  // above, rather than reshaping it - the 2-group path's types/behavior stay
+  // untouched, and this only ever activates when the rules engine actually
+  // recommends `'one-way-anova'`.
+  const anovaBuildResult: BuildOneWayAnovaRequestResult | undefined = useMemo(() => {
+    if (!isAnovaRecommended) return undefined
+    // Milestone 8 only reconciles the independent-groups dataset format;
+    // a nested (technical-replicate) dataset for 3+ groups isn't handled
+    // yet (see Milestone 7's aggregation, which is 2-group-only) - fall
+    // through to an honest "not enough data" explanation rather than a
+    // guessed treatment.
+    if (dataset.format !== 'independent-groups') return undefined
+    return buildOneWayAnovaRequest(design, dataset)
+  }, [isAnovaRecommended, design, dataset])
+
+  const [anovaState, setAnovaState] = useState<AnovaFlowState>({ kind: 'loading' })
+  const [anovaLoadingStage, setAnovaLoadingStage] = useState<LoadingStage>('idle')
+
+  useEffect(() => {
+    if (!anovaBuildResult || anovaBuildResult.status !== 'ready') return
+    return onStatisticsProgress(setAnovaLoadingStage)
+  }, [anovaBuildResult])
+
+  useEffect(() => {
+    if (!anovaBuildResult || anovaBuildResult.status !== 'ready') return
+    let cancelled = false
+
+    async function run() {
+      if (!anovaBuildResult || anovaBuildResult.status !== 'ready') return
+      setAnovaState({ kind: 'loading' })
+      const response = await runStatistics(anovaBuildResult.request)
+      if (cancelled) return
+
+      if (!response.success) {
+        setAnovaState({ kind: 'error', message: response.error.message })
+        return
+      }
+
+      const analysis = response.result as Extract<
+        MethodsAnalysis,
+        { analysisType: 'one-way-anova' }
+      >
+      const { groups } = anovaBuildResult.request.payload
+      setAnovaState({
+        kind: 'ready',
+        analysis,
+        normalityByGroup: Object.fromEntries(
+          groups.map((g) => [g.label, { status: 'loading' } as AnovaGroupNormalityState]),
+        ),
+      })
+
+      const normalityResponses = await Promise.all(
+        groups.map((g) =>
+          runStatistics({ analysisType: 'normality-diagnostics', payload: { values: g.values } }),
+        ),
+      )
+      if (cancelled) return
+
+      const normalityByGroup: Record<string, AnovaGroupNormalityState> = {}
+      groups.forEach((group, index) => {
+        const response = normalityResponses[index]
+        normalityByGroup[group.label] = response.success
+          ? { status: 'ready', result: response.result.result as NormalityDiagnosticsResult }
+          : { status: 'error', message: response.error.message }
+      })
+      setAnovaState({ kind: 'ready', analysis, normalityByGroup })
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [anovaBuildResult])
+
   if (nestedUnsupportedRelationship) {
     return (
       <AnalysisExplanation
@@ -241,6 +357,85 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
       <AnalysisExplanation
         recommendation={recommendation}
         notYetImplemented={recommendation.status === 'supported'}
+      />
+    )
+  }
+
+  if (isAnovaRecommended) {
+    if (dataset.format !== 'independent-groups') {
+      return (
+        <AnalysisExplanation
+          recommendation={recommendation}
+          insufficientDataMessage="This version of Rigor's one-way ANOVA only supports the independent-groups data format - a nested/technical-replicate dataset for 3+ groups isn't reconciled yet."
+        />
+      )
+    }
+
+    if (!anovaBuildResult || anovaBuildResult.status === 'insufficient-data') {
+      return (
+        <AnalysisExplanation
+          recommendation={recommendation}
+          insufficientDataMessage={anovaBuildResult?.message}
+        />
+      )
+    }
+
+    if (anovaState.kind === 'loading') {
+      return (
+        <section aria-labelledby="analysis-loading-title" role="status">
+          <h2 id="analysis-loading-title">Running your analysis</h2>
+          <p>{LOADING_STAGE_LABEL[anovaLoadingStage]}</p>
+        </section>
+      )
+    }
+
+    if (anovaState.kind === 'error') {
+      return (
+        <section aria-labelledby="analysis-error-title">
+          <h2 id="analysis-error-title">The analysis couldn't be completed</h2>
+          <p className="field-error">{anovaState.message}</p>
+          <div className="wizard-nav">
+            <button type="button" onClick={onExit} className="wizard-back">
+              Back to home
+            </button>
+          </div>
+        </section>
+      )
+    }
+
+    const anovaExcludedObservationCount = excludedRowCount(dataset)
+    const anovaGroups = anovaBuildResult.request.payload.groups
+
+    function handleOpenAnovaReport() {
+      if (
+        anovaState.kind !== 'ready' ||
+        !anovaBuildResult ||
+        anovaBuildResult.status !== 'ready'
+      ) {
+        return
+      }
+      const normalityByGroup: Record<string, NormalityDiagnosticsResult> = {}
+      for (const [label, normState] of Object.entries(anovaState.normalityByGroup)) {
+        if (normState.status === 'ready') normalityByGroup[label] = normState.result
+      }
+      onOpenReport({
+        kind: 'one-way-anova',
+        design,
+        dataset,
+        analysis: anovaState.analysis,
+        groups: anovaGroups,
+        normalityByGroup,
+        excludedObservationCount: anovaExcludedObservationCount,
+      })
+    }
+
+    return (
+      <AnovaResultsView
+        design={design}
+        analysis={anovaState.analysis}
+        groups={anovaGroups}
+        normalityByGroup={anovaState.normalityByGroup}
+        onOpenReport={handleOpenAnovaReport}
       />
     )
   }
@@ -308,7 +503,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
 
     const analysisForProject: ProjectAnalysisResult = {
       analysisType: state.analysis.analysisType,
-      result: state.analysis.result as WelchTwoSampleTTestResult | PairedTTestResult,
+      result: state.analysis.result,
       groupALabel: buildResult.groupALabel,
       groupBLabel: buildResult.groupBLabel,
       normalityDiagnosticsByGroup: normalityByGroup,
@@ -334,6 +529,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
   function handleOpenReport() {
     if (state.kind !== 'ready' || !buildResult || buildResult.status !== 'ready') return
     onOpenReport({
+      kind: 'two-group',
       design,
       dataset,
       analysis: state.analysis,

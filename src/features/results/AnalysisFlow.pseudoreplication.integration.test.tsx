@@ -197,6 +197,7 @@ describe('AnalysisFlow: nested dataset + independent relationship (Milestone 7)'
       // record of the aggregation decision, and the FULL original dataset
       // (still 60 raw rows) - never a filtered/mutated one.
       fireEvent.click(screen.getByRole('button', { name: 'View printable report' }))
+      if (reportContext?.kind !== 'two-group') throw new Error('expected a two-group report context')
       expect(reportContext?.dataset.rows).toHaveLength(TOTAL_RAW_ROWS)
       expect(reportContext?.aggregation?.method).toBe('mean')
       expect(reportContext?.aggregation?.units).toHaveLength(6)

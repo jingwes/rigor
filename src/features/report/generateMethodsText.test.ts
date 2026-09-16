@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type {
+  OneWayAnovaResult,
   PairedTTestResult,
   WelchTwoSampleTTestResult,
 } from '../../statistics/types'
@@ -47,6 +48,96 @@ const pairedResult: PairedTTestResult = {
   pValue: 0.001,
   effectSize: 1.02,
   effectSizeMethod: 'cohens_d_z',
+}
+
+const anovaResult: OneWayAnovaResult = {
+  groups: [
+    {
+      label: 'Control',
+      n: 10,
+      mean: 5.032,
+      median: 5.155,
+      sd: 0.583,
+      q1: 4.56,
+      q3: 5.3,
+      iqr: 0.74,
+      min: 4.17,
+      max: 6.11,
+      ci95Low: 4.61,
+      ci95High: 5.45,
+    },
+    {
+      label: 'Low dose',
+      n: 10,
+      mean: 4.661,
+      median: 4.55,
+      sd: 0.794,
+      q1: 4.19,
+      q3: 4.87,
+      iqr: 0.68,
+      min: 3.59,
+      max: 6.03,
+      ci95Low: 4.09,
+      ci95High: 5.23,
+    },
+    {
+      label: 'High dose',
+      n: 10,
+      mean: 5.526,
+      median: 5.435,
+      sd: 0.443,
+      q1: 5.26,
+      q3: 5.8,
+      iqr: 0.54,
+      min: 4.92,
+      max: 6.31,
+      ci95Low: 5.21,
+      ci95High: 5.84,
+    },
+  ],
+  omnibus: {
+    method: 'welch_anova',
+    fStatistic: 5.181,
+    numeratorDf: 2,
+    denominatorDf: 17.128,
+    pValue: 0.0174,
+  },
+  pairwiseComparisons: [
+    {
+      groupALabel: 'Control',
+      groupBLabel: 'Low dose',
+      meanDifference: 0.371,
+      tStatistic: 1.191,
+      degreesOfFreedom: 16.52,
+      pValueRaw: 0.2504,
+      pValueAdjusted: 0.2504,
+      effectSize: 0.51,
+      effectSizeMethod: 'hedges_g',
+    },
+    {
+      groupALabel: 'Control',
+      groupBLabel: 'High dose',
+      meanDifference: -0.494,
+      tStatistic: -2.134,
+      degreesOfFreedom: 16.79,
+      pValueRaw: 0.0479,
+      pValueAdjusted: 0.0958,
+      effectSize: -0.914,
+      effectSizeMethod: 'hedges_g',
+    },
+    {
+      groupALabel: 'Low dose',
+      groupBLabel: 'High dose',
+      meanDifference: -0.865,
+      tStatistic: -3.01,
+      degreesOfFreedom: 14.1,
+      pValueRaw: 0.0093,
+      pValueAdjusted: 0.0279,
+      effectSize: -1.289,
+      effectSizeMethod: 'hedges_g',
+    },
+  ],
+  pairwiseCorrectionMethod: 'holm_bonferroni',
 }
 
 describe('generateMethodsText', () => {
@@ -128,5 +219,58 @@ describe('generateMethodsText', () => {
       excludedObservationCount: 0,
     }
     expect(generateMethodsText(input)).toBe(generateMethodsText(input))
+  })
+})
+
+describe('generateMethodsText - one-way ANOVA (Milestone 8)', () => {
+  function anovaDesign(): ExperimentDesign {
+    return design({ groups: { count: 3, names: ['Control', 'Low dose', 'High dose'] } })
+  }
+
+  it('describes the outcome, all real group n values, and names Welch ANOVA', () => {
+    const text = generateMethodsText({
+      design: anovaDesign(),
+      analysis: { analysisType: 'one-way-anova', result: anovaResult },
+      excludedObservationCount: 0,
+    })
+
+    expect(text).toContain('Cell viability')
+    expect(text).toContain('Control')
+    expect(text).toContain('Low dose')
+    expect(text).toContain('High dose')
+    // Real per-group n's, not a single invented total.
+    expect(text).toContain('n = 10')
+    expect(text).toMatch(/Welch/)
+    expect(text).toMatch(/one-way ANOVA/i)
+  })
+
+  it('states that pairwise comparisons were corrected for multiple testing (Holm-Bonferroni)', () => {
+    const text = generateMethodsText({
+      design: anovaDesign(),
+      analysis: { analysisType: 'one-way-anova', result: anovaResult },
+      excludedObservationCount: 0,
+    })
+    expect(text).toMatch(/holm-bonferroni/i)
+    expect(text).toMatch(/multiple testing/i)
+    expect(text).toContain('3 pairwise comparisons')
+  })
+
+  it('does not require groupALabel/groupBLabel (reads labels from the result itself)', () => {
+    expect(() =>
+      generateMethodsText({
+        design: anovaDesign(),
+        analysis: { analysisType: 'one-way-anova', result: anovaResult },
+        excludedObservationCount: 0,
+      }),
+    ).not.toThrow()
+  })
+
+  it('mentions real exclusions only when they occurred', () => {
+    const withExclusions = generateMethodsText({
+      design: anovaDesign(),
+      analysis: { analysisType: 'one-way-anova', result: anovaResult },
+      excludedObservationCount: 3,
+    })
+    expect(withExclusions).toMatch(/3 observations were excluded/i)
   })
 })
