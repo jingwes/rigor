@@ -6,6 +6,7 @@ import { formatPValue } from './formatPValue'
 import { formatStatistic } from './formatStatistic'
 import { generateInterpretationText } from './generateInterpretationText'
 import { generateMethodsText } from './generateMethodsText'
+import { describeAggregationSampleSize } from '../analysis-plan/aggregateByExperimentalUnit'
 
 export interface ReportViewProps {
   context: AnalysisReportContext
@@ -37,6 +38,7 @@ export function ReportView({ context, onClose }: ReportViewProps) {
     normalityA,
     normalityB,
     excludedObservationCount,
+    aggregation,
   } = context
 
   const summaryLines = describeDesign(design)
@@ -47,6 +49,7 @@ export function ReportView({ context, onClose }: ReportViewProps) {
     groupALabel,
     groupBLabel,
     excludedObservationCount,
+    aggregation,
   })
   const interpretationText = generateInterpretationText({
     design,
@@ -117,6 +120,13 @@ export function ReportView({ context, onClose }: ReportViewProps) {
           parsing your data.
         </p>
       </section>
+
+      {aggregation && (
+        <section aria-labelledby="report-aggregation-title">
+          <h2 id="report-aggregation-title">Technical replicates</h2>
+          <p>{describeAggregationSampleSize(aggregation, design.experimentalUnit.label)}</p>
+        </section>
+      )}
 
       <section aria-labelledby="report-visualization-title">
         <h2 id="report-visualization-title">Visualization</h2>

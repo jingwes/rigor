@@ -20,6 +20,7 @@ import type {
   WelchTwoSampleTTestResult,
 } from '../statistics/types'
 import type { ChartCustomizationOptions, IntervalType } from '../components/charts/types'
+import type { NestedAggregationResult } from '../features/analysis-plan/aggregateByExperimentalUnit'
 
 export const PROJECT_FILE_SCHEMA_VERSION = 1
 
@@ -37,6 +38,14 @@ export interface ProjectAnalysisResult {
   groupBLabel: string
   /** Normality diagnostics computed for each arm, keyed by group label. */
   normalityDiagnosticsByGroup: Record<string, NormalityDiagnosticsResult>
+  /**
+   * Milestone 7: present only when this analysis ran on per-experimental-unit
+   * aggregated (technical-replicate-averaged) values rather than raw
+   * independent-groups/paired rows. The raw `dataset.rows` above are always
+   * kept in full regardless - this is only the audit record of the
+   * aggregation decision, for the report/methods text to read from.
+   */
+  aggregation?: NestedAggregationResult
 }
 
 export interface ProjectVisualizationSettings {

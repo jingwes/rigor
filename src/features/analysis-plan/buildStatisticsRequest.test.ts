@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Dataset, DatasetRow, ParsingIssue } from '../../models/Dataset'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
-import { buildStatisticsRequest } from './buildStatisticsRequest'
+import { buildStatisticsRequest, buildStatisticsRequestFromAggregatedUnits } from './buildStatisticsRequest'
+import type { UnitAggregate } from './aggregateByExperimentalUnit'
 
 function design(overrides: Partial<ExperimentDesign> = {}): ExperimentDesign {
   return {
@@ -316,5 +317,62 @@ describe('buildStatisticsRequest - paired (paired-t-test)', () => {
     }
     const result = buildStatisticsRequest(pairedDesign(), dataset, 'paired-t-test')
     expect(result.status).toBe('insufficient-data')
+  })
+})
+
+describe('buildStatisticsRequestFromAggregatedUnits (Milestone 7)', () => {
+  function unit(partial: Partial<UnitAggregate> & { unit: string }): UnitAggregate {
+    return { group: 'Control', aggregatedValue: 0, rawValueCount: 1, ...partial }
+  }
+
+  it('maps aggregated per-unit means to the a/b arrays by group name, using unit count as n', () => {
+    const aggregates: UnitAggregate[] = [
+      unit({ unit: 'mouse-1', group: 'Control', aggregatedValue: 10, rawValueCount: 20 }),
+      unit({ unit: 'mouse-2', group: 'Control', aggregatedValue: 11, rawValueCount: 18 }),
+      unit({ unit: 'mouse-3', group: 'Control', aggregatedValue: 9, rawValueCount: 22 }),
+      unit({ unit: 'mouse-4', group: 'Treatment', aggregatedValue: 14, rawValueCount: 19 }),
+      unit({ unit: 'mouse-5', group: 'Treatment', aggregatedValue: 13, rawValueCount: 21 }),
+      unit({ unit: 'mouse-6', group: 'Treatment', aggregatedValue: 15, rawValueCount: 20 }),
+    ]
+
+    const result = buildStatisticsRequestFromAggregatedUnits(design(), aggregates)
+
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('expected ready')
+    expect(result.request.analysisType).toBe('welch-two-sample-t-test')
+    // n = number of experimental UNITS (3 per group), not raw sub-measurements.
+    expect(result.request.payload).toEqual({ a: [10, 11, 9], b: [14, 13, 15] })
+    expect(result.request.payload.a).toHaveLength(3)
+    expect(result.request.payload.b).toHaveLength(3)
+    expect(result.groupALabel).toBe('Control')
+    expect(result.groupBLabel).toBe('Treatment')
+  })
+
+  it('ignores units whose group does not match either declared group name', () => {
+    const aggregates: UnitAggregate[] = [
+      unit({ unit: 'mouse-1', group: 'Control', aggregatedValue: 10 }),
+      unit({ unit: 'mouse-2', group: 'Control', aggregatedValue: 11 }),
+      unit({ unit: 'mouse-x', group: 'Mystery', aggregatedValue: 999 }),
+      unit({ unit: 'mouse-3', group: 'Treatment', aggregatedValue: 12 }),
+      unit({ unit: 'mouse-4', group: 'Treatment', aggregatedValue: 13 }),
+    ]
+
+    const result = buildStatisticsRequestFromAggregatedUnits(design(), aggregates)
+    expect(result.status).toBe('ready')
+    if (result.status !== 'ready') throw new Error('expected ready')
+    expect(result.request.payload).toEqual({ a: [10, 11], b: [12, 13] })
+  })
+
+  it('reports insufficient-data when a group has fewer than 2 usable units', () => {
+    const aggregates: UnitAggregate[] = [
+      unit({ unit: 'mouse-1', group: 'Control', aggregatedValue: 10 }),
+      unit({ unit: 'mouse-2', group: 'Treatment', aggregatedValue: 12 }),
+      unit({ unit: 'mouse-3', group: 'Treatment', aggregatedValue: 13 }),
+    ]
+
+    const result = buildStatisticsRequestFromAggregatedUnits(design(), aggregates)
+    expect(result.status).toBe('insufficient-data')
+    if (result.status !== 'insufficient-data') throw new Error('expected insufficient-data')
+    expect(result.message).toMatch(/not enough usable experimental units/i)
   })
 })

@@ -4,6 +4,7 @@ import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type { ProjectAnalysisResult, RigorProject } from '../../models/ProjectFile'
 import { PROJECT_FILE_SCHEMA_VERSION } from '../../models/ProjectFile'
 import { recommendAnalysis } from '../../rules/analysisRules'
+import { analyzeReplicationStructure } from '../../rules/replicationRules'
 import type {
   NormalityDiagnosticsResult,
   PairedTTestResult,
@@ -16,12 +17,19 @@ import {
 } from '../../statistics/workerClient'
 import type { ChartCustomizationOptions, IntervalType } from '../../components/charts/types'
 import {
+  aggregateByExperimentalUnit,
+  summarizeAggregation,
+  type NestedAggregationResult,
+} from '../analysis-plan/aggregateByExperimentalUnit'
+import {
   buildStatisticsRequest,
+  buildStatisticsRequestFromAggregatedUnits,
   type BuildStatisticsRequestResult,
 } from '../analysis-plan/buildStatisticsRequest'
 import { downloadProjectFile } from '../report/exportProject'
 import type { MethodsAnalysis } from '../report/generateMethodsText'
 import { AnalysisExplanation } from './AnalysisExplanation'
+import { PseudoreplicationCheckStep } from './PseudoreplicationCheckStep'
 import { ResultsView } from './ResultsView'
 
 export interface AnalysisFlowProps {
@@ -43,6 +51,12 @@ export interface AnalysisReportContext {
   normalityA?: NormalityDiagnosticsResult
   normalityB?: NormalityDiagnosticsResult
   excludedObservationCount: number
+  /**
+   * Milestone 7: present only when the analysis ran on aggregated
+   * (technical-replicate-averaged) experimental-unit values rather than raw
+   * independent-groups/paired rows - the audit record of that decision.
+   */
+  aggregation?: NestedAggregationResult
 }
 
 const IMPLEMENTED_ANALYSIS_TYPES = new Set(['welch-two-sample-t-test', 'paired-t-test'])
@@ -78,12 +92,37 @@ function excludedRowCount(dataset: Dataset): number {
   return rowIds.size
 }
 
+function describeNestedRelationshipUnsupported(design: ExperimentDesign): string {
+  const unitLabel = design.experimentalUnit.label.trim() || 'experimental unit'
+  return (
+    'Your dataset uses the nested / sub-measurement format (multiple sub-measurements per ' +
+    `${unitLabel}), but your design's group relationship is "${design.relationship}", not ` +
+    'independent groups. This version of Rigor only knows how to reconcile technical replicates ' +
+    `with an independent-groups design (e.g. several ${unitLabel}s split into independent groups, ` +
+    'with several sub-measurements taken from each one). More complex nested designs - paired, ' +
+    'repeated-measures, or an explicitly nested relationship combined with sub-measurements - may ' +
+    'require mixed-effects models, which this version does not yet support. Rather than guess a ' +
+    "statistical treatment, Rigor is stopping here. Your data has still been kept, in case this " +
+    'becomes available in a future version.'
+  )
+}
+
 /**
  * Milestone 6's top-level orchestrator: decides (via the Milestone 2 rules
  * engine) whether a real analysis can run at all, builds the statistics
  * request (Milestone 4/6 adapter), calls the real Pyodide/SciPy worker, and
  * either renders real results or an honest explanation - never a fabricated
  * result and never a silent no-op.
+ *
+ * Milestone 7 additive extension: when the dataset uses the nested
+ * (technical-replicate) format together with an "independent" study
+ * relationship - the one combination this version knows how to reconcile
+ * with sub-measurements - this checks for likely pseudoreplication, requires
+ * an explicit "aggregate within experimental unit" confirmation when it
+ * finds it, and only then feeds the aggregated per-unit values into the same
+ * Welch two-sample t-test path used for independent-groups data. Any other
+ * relationship paired with a nested dataset gets an honest "not yet
+ * supported" explanation rather than a guessed treatment.
  */
 export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: AnalysisFlowProps) {
   const recommendation = useMemo(() => recommendAnalysis(design), [design])
@@ -93,13 +132,43 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     recommendation.analysisType !== undefined &&
     IMPLEMENTED_ANALYSIS_TYPES.has(recommendation.analysisType)
 
+  const isNestedDataset = dataset.format === 'nested'
+  const isNestedIndependent = isNestedDataset && design.relationship === 'independent'
+  const nestedUnsupportedRelationship = isNestedDataset && design.relationship !== 'independent'
+
+  const replicationSummary = useMemo(() => {
+    if (!isNestedIndependent) return undefined
+    return analyzeReplicationStructure(dataset, { unitLabel: design.experimentalUnit.label })
+  }, [dataset, design, isNestedIndependent])
+
+  const [aggregationConfirmed, setAggregationConfirmed] = useState(false)
+
+  const needsAggregationConfirmation =
+    isNestedIndependent &&
+    (replicationSummary?.isLikelyPseudoreplication ?? false) &&
+    !aggregationConfirmed
+
+  const aggregationResult: NestedAggregationResult | undefined = useMemo(() => {
+    if (!isNestedIndependent) return undefined
+    if ((replicationSummary?.isLikelyPseudoreplication ?? false) && !aggregationConfirmed) {
+      return undefined
+    }
+    return summarizeAggregation(aggregateByExperimentalUnit(dataset))
+  }, [isNestedIndependent, dataset, replicationSummary, aggregationConfirmed])
+
   const buildResult: BuildStatisticsRequestResult | undefined = useMemo(() => {
     if (!isImplemented || recommendation.status !== 'supported') return undefined
     const analysisType = recommendation.analysisType as
       | 'welch-two-sample-t-test'
       | 'paired-t-test'
+
+    if (isNestedIndependent) {
+      if (analysisType !== 'welch-two-sample-t-test' || !aggregationResult) return undefined
+      return buildStatisticsRequestFromAggregatedUnits(design, aggregationResult.units)
+    }
+
     return buildStatisticsRequest(design, dataset, analysisType)
-  }, [design, dataset, isImplemented, recommendation])
+  }, [design, dataset, isImplemented, recommendation, isNestedIndependent, aggregationResult])
 
   const [state, setState] = useState<FlowState>({ kind: 'loading' })
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('idle')
@@ -158,11 +227,31 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     }
   }, [buildResult])
 
+  if (nestedUnsupportedRelationship) {
+    return (
+      <AnalysisExplanation
+        recommendation={recommendation}
+        nestedDesignUnsupportedMessage={describeNestedRelationshipUnsupported(design)}
+      />
+    )
+  }
+
   if (!isImplemented) {
     return (
       <AnalysisExplanation
         recommendation={recommendation}
         notYetImplemented={recommendation.status === 'supported'}
+      />
+    )
+  }
+
+  if (needsAggregationConfirmation && replicationSummary) {
+    return (
+      <PseudoreplicationCheckStep
+        summary={replicationSummary}
+        unitLabel={design.experimentalUnit.label.trim() || 'experimental unit'}
+        onConfirm={() => setAggregationConfirmed(true)}
+        onBack={onExit}
       />
     )
   }
@@ -201,6 +290,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
 
   const { a: valuesA, b: valuesB } = buildResult.request.payload
   const excludedObservationCount = excludedRowCount(dataset)
+  const aggregationForResult = isNestedIndependent ? aggregationResult : undefined
 
   function handleSaveProject(settings: {
     intervalType: IntervalType
@@ -222,6 +312,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
       groupALabel: buildResult.groupALabel,
       groupBLabel: buildResult.groupBLabel,
       normalityDiagnosticsByGroup: normalityByGroup,
+      aggregation: aggregationForResult,
     }
 
     const project: RigorProject = {
@@ -253,6 +344,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
       normalityA: state.normalityA.status === 'ready' ? state.normalityA.result : undefined,
       normalityB: state.normalityB.status === 'ready' ? state.normalityB.result : undefined,
       excludedObservationCount,
+      aggregation: aggregationForResult,
     })
   }
 
@@ -270,6 +362,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
       normalityBError={state.normalityB.status === 'error' ? state.normalityB.message : undefined}
       onSaveProject={handleSaveProject}
       onOpenReport={handleOpenReport}
+      aggregation={aggregationForResult}
     />
   )
 }

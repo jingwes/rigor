@@ -34,6 +34,7 @@ import type {
   PairedTTestPayload,
   WelchTwoSampleTTestPayload,
 } from '../../statistics/types'
+import type { UnitAggregate } from './aggregateByExperimentalUnit'
 
 const MIN_USABLE_VALUES_PER_ARM = 2
 
@@ -187,6 +188,65 @@ function buildPairedRequest(
   return {
     status: 'ready',
     request: { analysisType: 'paired-t-test', payload: { a, b } },
+    groupALabel,
+    groupBLabel,
+  }
+}
+
+/**
+ * Milestone 7: builds a `welch-two-sample-t-test` request from per-unit
+ * AGGREGATED values (one mean value per experimental unit - see
+ * `aggregateByExperimentalUnit.ts`) rather than from raw dataset rows. This
+ * is the resolution to likely pseudoreplication in a nested dataset: once a
+ * student has confirmed the "aggregate within experimental unit" step, each
+ * unit's mean is treated as a single independent-groups observation, matched
+ * to the unit's group by the same `design.groups.names` position mapping
+ * `buildIndependentGroupsRequest` uses.
+ *
+ * `aggregates` is expected to already be filtered to usable rows (see
+ * `aggregateByExperimentalUnit`) - this function does not re-derive
+ * exclusion, it only maps units to the two named groups.
+ */
+export function buildStatisticsRequestFromAggregatedUnits(
+  design: ExperimentDesign,
+  aggregates: UnitAggregate[],
+): BuildStatisticsRequestResult {
+  const [groupALabel, groupBLabel] = design.groups.names
+
+  if (!groupALabel || !groupBLabel) {
+    return {
+      status: 'insufficient-data',
+      message:
+        'This analysis needs exactly two named groups from your experiment design, but two ' +
+        "names weren't available.",
+    }
+  }
+
+  const a: number[] = []
+  const b: number[] = []
+
+  for (const unit of aggregates) {
+    if (unit.group === groupALabel) a.push(unit.aggregatedValue)
+    else if (unit.group === groupBLabel) b.push(unit.aggregatedValue)
+    // As with the raw-row path, a unit whose group doesn't match either
+    // declared name is not silently guessed into an arm - it's just not
+    // counted.
+  }
+
+  if (a.length < MIN_USABLE_VALUES_PER_ARM || b.length < MIN_USABLE_VALUES_PER_ARM) {
+    return {
+      status: 'insufficient-data',
+      message:
+        `Not enough usable experimental units to run this analysis after averaging technical ` +
+        `replicates: '${groupALabel}' has ${a.length} unit(s) and '${groupBLabel}' has ${b.length}, ` +
+        `but each group needs at least ${MIN_USABLE_VALUES_PER_ARM}. Excluded or missing values ` +
+        "don't count - check the data preview above for what was flagged.",
+    }
+  }
+
+  return {
+    status: 'ready',
+    request: { analysisType: 'welch-two-sample-t-test', payload: { a, b } },
     groupALabel,
     groupBLabel,
   }

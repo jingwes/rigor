@@ -11,6 +11,14 @@ export interface AnalysisExplanationProps {
   notYetImplemented?: boolean
   /** Set when the data itself wasn't enough to run the recommended analysis. */
   insufficientDataMessage?: string
+  /**
+   * Milestone 7: set when the dataset uses the nested (technical-replicate /
+   * sub-measurement) format, but the design's group `relationship` isn't the
+   * one combination this version knows how to reconcile with sub-measurements
+   * ("independent"). Rather than guess a statistical treatment for e.g. a
+   * nested + paired/repeated design, Rigor stops and explains why.
+   */
+  nestedDesignUnsupportedMessage?: string
 }
 
 /**
@@ -25,16 +33,21 @@ export function AnalysisExplanation({
   recommendation,
   notYetImplemented,
   insufficientDataMessage,
+  nestedDesignUnsupportedMessage,
 }: AnalysisExplanationProps) {
   return (
     <section aria-labelledby="analysis-explanation-title">
       <h2 id="analysis-explanation-title">
-        {insufficientDataMessage
-          ? 'Not enough data yet to run this analysis'
-          : "Rigor can't run an analysis for this yet"}
+        {nestedDesignUnsupportedMessage
+          ? "Rigor can't run this nested-design analysis yet"
+          : insufficientDataMessage
+            ? 'Not enough data yet to run this analysis'
+            : "Rigor can't run an analysis for this yet"}
       </h2>
 
       <p>{recommendation.explanation}</p>
+
+      {nestedDesignUnsupportedMessage && <p>{nestedDesignUnsupportedMessage}</p>}
 
       {notYetImplemented && recommendation.status === 'supported' && (
         <p>

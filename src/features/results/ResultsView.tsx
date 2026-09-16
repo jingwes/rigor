@@ -24,6 +24,10 @@ import { formatPValue } from '../report/formatPValue'
 import { formatStatistic } from '../report/formatStatistic'
 import { generateInterpretationText } from '../report/generateInterpretationText'
 import type { MethodsAnalysis } from '../report/generateMethodsText'
+import {
+  describeAggregationSampleSize,
+  type NestedAggregationResult,
+} from '../analysis-plan/aggregateByExperimentalUnit'
 import { NormalityDiagnosticsSection } from './NormalityDiagnosticsSection'
 
 const EFFECT_SIZE_LABEL: Record<
@@ -57,6 +61,13 @@ export interface ResultsViewProps {
     chartCustomization: ChartCustomizationOptions
   }) => void
   onOpenReport: () => void
+  /**
+   * Milestone 7: present only when this analysis ran on per-experimental-unit
+   * aggregated (technical-replicate-averaged) values. When set, the sample
+   * size is always shown as both counts, clearly labeled - never a single
+   * ambiguous "n".
+   */
+  aggregation?: NestedAggregationResult
 }
 
 /**
@@ -79,6 +90,7 @@ export function ResultsView({
   normalityBError,
   onSaveProject,
   onOpenReport,
+  aggregation,
 }: ResultsViewProps) {
   const [intervalType, setIntervalType] = useState<IntervalType>('ci95')
   const [customization, setCustomization] = useState<ChartCustomizationOptions>(
@@ -137,6 +149,13 @@ export function ResultsView({
           ))}
         </dl>
       </section>
+
+      {aggregation && (
+        <section aria-labelledby="replicate-aggregation-title">
+          <h3 id="replicate-aggregation-title">Technical replicates were averaged</h3>
+          <p>{describeAggregationSampleSize(aggregation, design.experimentalUnit.label)}</p>
+        </section>
+      )}
 
       <section aria-labelledby="your-data-title">
         <h3 id="your-data-title">Your data</h3>
