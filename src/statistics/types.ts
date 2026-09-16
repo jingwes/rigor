@@ -30,6 +30,18 @@ export interface PairedTTestPayload {
 }
 
 /**
+ * Milestone 6: normality diagnostics for a single numeric sample
+ * (Shapiro-Wilk + skewness). DISPLAY ONLY - see `NormalityDiagnosticsResult`
+ * below. Nothing computed here is ever fed back into which test is chosen;
+ * that decision belongs entirely to `src/rules/analysisRules.ts`, made from
+ * the experiment design alone, before any data (let alone a normality
+ * p-value) exists.
+ */
+export interface NormalityDiagnosticsPayload {
+  values: number[]
+}
+
+/**
  * A request for one of the fixed, predefined analyses this worker exposes.
  * `analysisType` is the sole discriminant; there is no way to pass raw
  * Python through this contract.
@@ -42,6 +54,11 @@ export type StatisticsRequest =
       payload: WelchTwoSampleTTestPayload
     }
   | { id: string; analysisType: 'paired-t-test'; payload: PairedTTestPayload }
+  | {
+      id: string
+      analysisType: 'normality-diagnostics'
+      payload: NormalityDiagnosticsPayload
+    }
 
 export type AnalysisType = StatisticsRequest['analysisType']
 
@@ -105,6 +122,27 @@ export interface PairedTTestResult {
   effectSizeMethod: 'cohens_d_z'
 }
 
+/**
+ * Diagnostic-only normality checks for a single sample. `shapiroWilkW`/
+ * `shapiroWilkPValue`/`skewness` are `null` when `n < 3` (SciPy's
+ * `shapiro`/`skew` are undefined below that) - the UI must show the
+ * small-sample disclaimer in that case rather than a fabricated statistic.
+ *
+ * IMPORTANT: nothing that reads this result may use it to pick a
+ * statistical test. It exists purely so a student can look at their data's
+ * shape; the analysis was already decided by the rules engine before any
+ * data existed.
+ */
+export interface NormalityDiagnosticsResult {
+  n: number
+  /** Shapiro-Wilk W statistic. `null` when n < 3. */
+  shapiroWilkW: number | null
+  /** Shapiro-Wilk two-sided p-value. `null` when n < 3. */
+  shapiroWilkPValue: number | null
+  /** Bias-corrected (adjusted Fisher-Pearson) sample skewness. `null` when n < 3. */
+  skewness: number | null
+}
+
 export type AnalysisResult =
   | { analysisType: 'descriptives'; result: DescriptivesResult }
   | {
@@ -112,6 +150,7 @@ export type AnalysisResult =
       result: WelchTwoSampleTTestResult
     }
   | { analysisType: 'paired-t-test'; result: PairedTTestResult }
+  | { analysisType: 'normality-diagnostics'; result: NormalityDiagnosticsResult }
 
 export interface StatisticsErrorInfo {
   message: string

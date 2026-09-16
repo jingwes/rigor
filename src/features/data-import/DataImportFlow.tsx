@@ -12,6 +12,8 @@ import { parseCsvText } from './csvParsing'
 export interface DataImportFlowProps {
   design: ExperimentDesign
   onExit: () => void
+  /** Called once the student confirms their validated dataset, handing it to Milestone 6's analysis flow. */
+  onDataImported: (dataset: Dataset) => void
 }
 
 type EntryMode = 'paste' | 'upload'
@@ -30,7 +32,7 @@ function isRowBlank(row: Record<string, string>): boolean {
   return Object.values(row).every((value) => value.trim().length === 0)
 }
 
-export function DataImportFlow({ design, onExit }: DataImportFlowProps) {
+export function DataImportFlow({ design, onExit, onDataImported }: DataImportFlowProps) {
   const resolution = useMemo(() => resolveDatasetFormat(design), [design])
   const [chosenFormat, setChosenFormat] = useState<DatasetFormat | undefined>(
     resolution.kind === 'determined' ? resolution.format : undefined,
@@ -50,8 +52,6 @@ export function DataImportFlow({ design, onExit }: DataImportFlowProps) {
   const [csvStructuralIssues, setCsvStructuralIssues] = useState<
     ReturnType<typeof parseCsvText>['issues']
   >([])
-
-  const [imported, setImported] = useState(false)
 
   function handleChooseFormat(next: DatasetFormat) {
     setChosenFormat(next)
@@ -104,23 +104,6 @@ export function DataImportFlow({ design, onExit }: DataImportFlowProps) {
     csvStructuralIssues,
     design,
   ])
-
-  if (imported) {
-    return (
-      <section aria-labelledby="data-import-done-title">
-        <h2 id="data-import-done-title">Data imported</h2>
-        <p>
-          Your data has been imported and validated. Running the actual analysis
-          isn't available in this version yet.
-        </p>
-        <div className="wizard-nav">
-          <button type="button" onClick={onExit} className="wizard-back">
-            Back to home
-          </button>
-        </div>
-      </section>
-    )
-  }
 
   if (!format) {
     return (
@@ -224,7 +207,7 @@ export function DataImportFlow({ design, onExit }: DataImportFlowProps) {
           type="button"
           className="wizard-next"
           disabled={!dataset || dataset.rows.length === 0}
-          onClick={() => setImported(true)}
+          onClick={() => dataset && onDataImported(dataset)}
         >
           This looks right - import this data
         </button>

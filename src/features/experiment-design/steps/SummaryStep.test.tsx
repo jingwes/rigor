@@ -17,11 +17,11 @@ describe('SummaryStep', () => {
 
     expect(screen.getAllByText(/weren't sure/).length).toBeGreaterThan(0)
     expect(
-      screen.getByText(/Running an actual analysis isn't available in this version/),
+      screen.getByText(/won't be able to produce statistical results/),
     ).toBeInTheDocument()
   })
 
-  it('never claims a statistical recommendation and has no test-name jargon', () => {
+  it('shows the rules engine recommendation, in the required non-judgmental voice', () => {
     render(
       <SummaryStep
         draft={createInitialDraft()}
@@ -32,9 +32,38 @@ describe('SummaryStep', () => {
       />,
     )
     const bodyText = (document.body.textContent ?? '').toLowerCase()
-    expect(bodyText).not.toContain('t-test')
-    expect(bodyText).not.toContain('anova')
-    expect(bodyText).toContain("isn't judging whether your")
+    // Never claims a study is "valid" or "approved" - see src/rules/explanations.ts.
+    expect(bodyText).not.toContain('your study is valid')
+    expect(bodyText).not.toContain('ai approved')
+    expect(screen.getByText('Recommended analysis')).toBeInTheDocument()
+  })
+
+  it('shows a real "Welch two-sample t-test" recommendation for a supported design', () => {
+    const draft = {
+      ...createInitialDraft(),
+      outcomeName: 'plant height',
+      outcomeType: 'continuous' as const,
+      groupCountChoice: 'two' as const,
+      groupsCount: 2,
+      groupNames: ['Control', 'Fertilizer X'],
+      relationship: 'independent' as const,
+      experimentalUnitLabel: 'Plant',
+      technicalReplicationPresent: false,
+      exclusionsPredefined: true,
+    }
+    render(
+      <SummaryStep
+        draft={draft}
+        onEditStep={vi.fn()}
+        onRestart={vi.fn()}
+        onExit={vi.fn()}
+        onEnterData={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/Welch two-sample t-test/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Rigor will run the recommended analysis and show real results/),
+    ).toBeInTheDocument()
   })
 
   it('reflects a fully answered draft in plain language', () => {

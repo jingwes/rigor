@@ -20,7 +20,7 @@ function baseDesign(
 
 describe('DataImportFlow', () => {
   it('uses the independent-groups template directly when the design says so', () => {
-    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} />)
+    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} onDataImported={vi.fn()} />)
     expect(screen.getByText(/Rigor expects the/)).toBeInTheDocument()
     expect(screen.getByText(/independent groups/)).toBeInTheDocument()
     expect(screen.getAllByText('sample_id').length).toBeGreaterThan(0)
@@ -31,6 +31,7 @@ describe('DataImportFlow', () => {
       <DataImportFlow
         design={baseDesign({ relationship: 'unknown' })}
         onExit={vi.fn()}
+        onDataImported={vi.fn()}
       />,
     )
     expect(
@@ -52,7 +53,7 @@ describe('DataImportFlow', () => {
   })
 
   it('lets a student type data into the grid and shows a live preview with flagged issues', () => {
-    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} />)
+    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} onDataImported={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText('sample_id, row 1'), {
       target: { value: '1' },
@@ -72,7 +73,7 @@ describe('DataImportFlow', () => {
   })
 
   it('never silently drops a row with issues from the preview', () => {
-    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} />)
+    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} onDataImported={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText('sample_id, row 1'), {
       target: { value: '1' },
@@ -87,7 +88,7 @@ describe('DataImportFlow', () => {
   })
 
   it('parses an uploaded CSV and shows a clean preview when the data is valid', async () => {
-    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} />)
+    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} onDataImported={vi.fn()} />)
     fireEvent.click(screen.getByRole('radio', { name: 'Upload a CSV file' }))
 
     const csv =
@@ -107,7 +108,7 @@ describe('DataImportFlow', () => {
   })
 
   it("shows a malformed CSV's issues clearly instead of swallowing them", async () => {
-    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} />)
+    render(<DataImportFlow design={baseDesign()} onExit={vi.fn()} onDataImported={vi.fn()} />)
     fireEvent.click(screen.getByRole('radio', { name: 'Upload a CSV file' }))
 
     const file = new File(['sample_id,group,value\n1,Control\n'], 'data.csv', {
@@ -122,9 +123,16 @@ describe('DataImportFlow', () => {
     expect(screen.getByText(/row 2 of the file/i)).toBeInTheDocument()
   })
 
-  it('ends with an honest message that no analysis has run, after the student confirms import', () => {
+  it('hands the validated dataset to onDataImported when the student confirms import', () => {
     const onExit = vi.fn()
-    render(<DataImportFlow design={baseDesign()} onExit={onExit} />)
+    const onDataImported = vi.fn()
+    render(
+      <DataImportFlow
+        design={baseDesign()}
+        onExit={onExit}
+        onDataImported={onDataImported}
+      />,
+    )
 
     fireEvent.change(screen.getByLabelText('sample_id, row 1'), {
       target: { value: '1' },
@@ -138,10 +146,9 @@ describe('DataImportFlow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /import this data/i }))
 
-    expect(
-      screen.getByText(
-        "Your data has been imported and validated. Running the actual analysis isn't available in this version yet.",
-      ),
-    ).toBeInTheDocument()
+    expect(onDataImported).toHaveBeenCalledTimes(1)
+    const dataset = onDataImported.mock.calls[0][0]
+    expect(dataset.rows).toHaveLength(1)
+    expect(dataset.rows[0].value).toBe(10)
   })
 })

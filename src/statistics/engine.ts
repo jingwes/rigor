@@ -16,9 +16,11 @@ import type { PyodideInterface } from 'pyodide'
 
 import descriptivesSource from './python/descriptives.py?raw'
 import twoGroupSource from './python/two_group.py?raw'
+import normalitySource from './python/normality.py?raw'
 import type {
   AnalysisResult,
   DescriptivesResult,
+  NormalityDiagnosticsResult,
   PairedTTestResult,
   StatisticsRequest,
   StatisticsResponse,
@@ -33,6 +35,7 @@ import type {
 export function installStatisticsPython(pyodide: PyodideInterface): void {
   pyodide.runPython(descriptivesSource)
   pyodide.runPython(twoGroupSource)
+  pyodide.runPython(normalitySource)
 }
 
 /** Name of the Python entry point for each analysis type, kept in one place. */
@@ -40,6 +43,7 @@ const ENTRY_POINT_BY_ANALYSIS_TYPE = {
   descriptives: 'compute_descriptives_json',
   'welch-two-sample-t-test': 'welch_two_sample_t_test_json',
   'paired-t-test': 'paired_t_test_json',
+  'normality-diagnostics': 'normality_diagnostics_json',
 } as const satisfies Record<StatisticsRequest['analysisType'], string>
 
 /**
@@ -96,6 +100,14 @@ function computeResult(
         request.payload,
       ) as PairedTTestResult
       return { analysisType: 'paired-t-test', result }
+    }
+    case 'normality-diagnostics': {
+      const result = callJsonEntryPoint(
+        pyodide,
+        ENTRY_POINT_BY_ANALYSIS_TYPE['normality-diagnostics'],
+        request.payload,
+      ) as NormalityDiagnosticsResult
+      return { analysisType: 'normality-diagnostics', result }
     }
   }
 }

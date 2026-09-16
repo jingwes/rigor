@@ -59,9 +59,11 @@ describe('experiment design wizard - full run through', () => {
     expect(screen.getByText(/about 1 measurement/)).toBeInTheDocument()
     expect(screen.getByText('Grown under identical light.')).toBeInTheDocument()
 
-    const bodyText = (document.body.textContent ?? '').toLowerCase()
-    expect(bodyText).not.toContain('t-test')
-    expect(bodyText).not.toContain('anova')
+    // This design (continuous outcome, two independent groups) IS one Rigor
+    // supports - the rules engine's real recommendation should show through,
+    // naming the actual test, not be hidden or replaced with a guess.
+    expect(screen.getByText('Recommended analysis')).toBeInTheDocument()
+    expect(screen.getByText(/Welch two-sample t-test/)).toBeInTheDocument()
   })
 
   it('preserves answers when navigating back and forward', () => {

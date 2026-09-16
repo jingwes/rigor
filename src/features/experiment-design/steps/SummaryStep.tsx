@@ -1,4 +1,5 @@
 import type { ExperimentDesign } from '../../../models/ExperimentDesign'
+import { recommendAnalysis } from '../../../rules/analysisRules'
 import type { WizardDraft, WizardStepId } from '../wizardTypes'
 import { toExperimentDesign } from '../toExperimentDesign'
 import { describeDesign } from '../describeDesign'
@@ -10,6 +11,17 @@ export interface SummaryStepProps {
   onExit: () => void
   onEnterData: (design: ExperimentDesign) => void
 }
+
+/**
+ * The only two analyses this version of Rigor actually computes (Milestone
+ * 6 scope). The rules engine (Milestone 2) can recommend others - e.g. a
+ * one-way ANOVA for 3+ independent groups - that are statistically correct
+ * recommendations this app just hasn't implemented and verified yet.
+ */
+const IMPLEMENTED_ANALYSIS_TYPES = new Set([
+  'welch-two-sample-t-test',
+  'paired-t-test',
+])
 
 const STEP_LABELS: Record<WizardStepId, string> = {
   researchQuestion: 'question & measurement',
@@ -29,16 +41,16 @@ export function SummaryStep({
 }: SummaryStepProps) {
   const design = toExperimentDesign(draft)
   const lines = describeDesign(design)
+  const recommendation = recommendAnalysis(design)
+  const isImplemented =
+    recommendation.status === 'supported' &&
+    recommendation.analysisType !== undefined &&
+    IMPLEMENTED_ANALYSIS_TYPES.has(recommendation.analysisType)
 
   return (
     <section aria-labelledby="summary-title">
       <h2 id="summary-title">Your experimental design, so far</h2>
-      <p>
-        Here's everything you told us, in plain language. Nothing here is a
-        statistical recommendation - Rigor doesn't have a rules engine yet, so
-        it isn't judging whether your design is right. It's just reflecting back
-        what you entered.
-      </p>
+      <p>Here's everything you told us, in plain language.</p>
 
       <dl className="summary-list">
         {lines.map((line) => (
@@ -58,10 +70,48 @@ export function SummaryStep({
         ))}
       </dl>
 
+      <section aria-labelledby="recommendation-title">
+        <h3 id="recommendation-title">Recommended analysis</h3>
+        <p>{recommendation.explanation}</p>
+
+        {recommendation.status === 'needs-information' &&
+          recommendation.requiredQuestions &&
+          recommendation.requiredQuestions.length > 0 && (
+            <ul>
+              {recommendation.requiredQuestions.map((question) => (
+                <li key={question.id}>{question.prompt}</li>
+              ))}
+            </ul>
+          )}
+
+        {recommendation.warnings.length > 0 && (
+          <ul className="chart-warnings">
+            {recommendation.warnings.map((warning) => (
+              <li key={warning.id} className={`chart-warning-${warning.severity}`}>
+                {warning.message}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {recommendation.status === 'supported' && !isImplemented && (
+          <p className="wizard-note">
+            This is the statistically recommended analysis for your design, but this version of
+            Rigor's statistics engine only computes a Welch two-sample t-test or a paired t-test -
+            it doesn't run this one yet.
+          </p>
+        )}
+      </section>
+
       <p className="wizard-note">
-        Running an actual analysis isn't available in this version of Rigor yet
-        - that's still to come. You can enter your data now, though, and Rigor
-        will check it over.
+        {isImplemented
+          ? 'This is a preview, not a locked-in analysis plan - you can still go back and change ' +
+            "your design. You can enter your data now, and once it's validated, Rigor will run " +
+            'the recommended analysis and show real results.'
+          : "You can still enter your data now - collecting it carefully is worthwhile even " +
+            "before a supported analysis is available - but Rigor won't be able to produce " +
+            'statistical results for this design without more information, or without support ' +
+            "for it in this version. Rigor will check your data over regardless."}
       </p>
 
       <div className="wizard-nav">
