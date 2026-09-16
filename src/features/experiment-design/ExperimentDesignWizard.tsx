@@ -1,3 +1,4 @@
+import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import { useWizard } from './useWizard'
 import { WizardStepShell } from './WizardStepShell'
 import { canProceedFromStep, getStepNumber, getTotalSteps } from './wizardLogic'
@@ -20,13 +21,18 @@ const STEP_TITLES: Record<WizardStepId, string> = {
 
 export interface ExperimentDesignWizardProps {
   onExit: () => void
+  onEnterData: (design: ExperimentDesign) => void
 }
 
-export function ExperimentDesignWizard({ onExit }: ExperimentDesignWizardProps) {
+export function ExperimentDesignWizard({
+  onExit,
+  onEnterData,
+}: ExperimentDesignWizardProps) {
   const { state, dispatch } = useWizard()
   const { step, draft } = state
 
-  const onUpdate = (patch: Partial<typeof draft>) => dispatch({ type: 'UPDATE_DRAFT', patch })
+  const onUpdate = (patch: Partial<typeof draft>) =>
+    dispatch({ type: 'UPDATE_DRAFT', patch })
 
   if (step === 'summary') {
     return (
@@ -35,6 +41,7 @@ export function ExperimentDesignWizard({ onExit }: ExperimentDesignWizardProps) 
         onEditStep={(target) => dispatch({ type: 'GO_TO_STEP', step: target })}
         onRestart={() => dispatch({ type: 'RESTART' })}
         onExit={onExit}
+        onEnterData={onEnterData}
       />
     )
   }
@@ -52,17 +59,27 @@ export function ExperimentDesignWizard({ onExit }: ExperimentDesignWizardProps) 
       onNext={() => dispatch({ type: 'GO_NEXT' })}
       canProceed={canProceed}
     >
-      {step === 'researchQuestion' && <ResearchQuestionStep draft={draft} onUpdate={onUpdate} />}
+      {step === 'researchQuestion' && (
+        <ResearchQuestionStep draft={draft} onUpdate={onUpdate} />
+      )}
       {step === 'groups' && (
         <GroupsStep
           draft={draft}
           onUpdate={onUpdate}
-          onSetGroupCount={(choice, count) => dispatch({ type: 'SET_GROUP_COUNT', choice, count })}
+          onSetGroupCount={(choice, count) =>
+            dispatch({ type: 'SET_GROUP_COUNT', choice, count })
+          }
         />
       )}
-      {step === 'relationship' && <RelationshipStep draft={draft} onUpdate={onUpdate} />}
-      {step === 'experimentalUnit' && <ExperimentalUnitStep draft={draft} onUpdate={onUpdate} />}
-      {step === 'finalDetails' && <FinalDetailsStep draft={draft} onUpdate={onUpdate} />}
+      {step === 'relationship' && (
+        <RelationshipStep draft={draft} onUpdate={onUpdate} />
+      )}
+      {step === 'experimentalUnit' && (
+        <ExperimentalUnitStep draft={draft} onUpdate={onUpdate} />
+      )}
+      {step === 'finalDetails' && (
+        <FinalDetailsStep draft={draft} onUpdate={onUpdate} />
+      )}
     </WizardStepShell>
   )
 }

@@ -67,7 +67,7 @@ describe('experiment design wizard - full run through', () => {
   it('preserves answers when navigating back and forward', () => {
     render(
       <WizardProvider>
-        <ExperimentDesignWizard onExit={() => {}} />
+        <ExperimentDesignWizard onExit={() => {}} onEnterData={() => {}} />
       </WizardProvider>,
     )
 
@@ -90,7 +90,7 @@ describe('experiment design wizard - full run through', () => {
   it('skips the relationship question for a single group and never guesses an answer for it', () => {
     render(
       <WizardProvider>
-        <ExperimentDesignWizard onExit={() => {}} />
+        <ExperimentDesignWizard onExit={() => {}} onEnterData={() => {}} />
       </WizardProvider>,
     )
 

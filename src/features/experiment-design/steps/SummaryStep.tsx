@@ -1,3 +1,4 @@
+import type { ExperimentDesign } from '../../../models/ExperimentDesign'
 import type { WizardDraft, WizardStepId } from '../wizardTypes'
 import { toExperimentDesign } from '../toExperimentDesign'
 import { describeDesign } from '../describeDesign'
@@ -7,6 +8,7 @@ export interface SummaryStepProps {
   onEditStep: (step: WizardStepId) => void
   onRestart: () => void
   onExit: () => void
+  onEnterData: (design: ExperimentDesign) => void
 }
 
 const STEP_LABELS: Record<WizardStepId, string> = {
@@ -18,7 +20,13 @@ const STEP_LABELS: Record<WizardStepId, string> = {
   summary: 'summary',
 }
 
-export function SummaryStep({ draft, onEditStep, onRestart, onExit }: SummaryStepProps) {
+export function SummaryStep({
+  draft,
+  onEditStep,
+  onRestart,
+  onExit,
+  onEnterData,
+}: SummaryStepProps) {
   const design = toExperimentDesign(draft)
   const lines = describeDesign(design)
 
@@ -26,9 +34,10 @@ export function SummaryStep({ draft, onEditStep, onRestart, onExit }: SummarySte
     <section aria-labelledby="summary-title">
       <h2 id="summary-title">Your experimental design, so far</h2>
       <p>
-        Here's everything you told us, in plain language. Nothing here is a statistical
-        recommendation - Rigor doesn't have a rules engine yet, so it isn't judging whether your
-        design is right. It's just reflecting back what you entered.
+        Here's everything you told us, in plain language. Nothing here is a
+        statistical recommendation - Rigor doesn't have a rules engine yet, so
+        it isn't judging whether your design is right. It's just reflecting back
+        what you entered.
       </p>
 
       <dl className="summary-list">
@@ -50,12 +59,24 @@ export function SummaryStep({ draft, onEditStep, onRestart, onExit }: SummarySte
       </dl>
 
       <p className="wizard-note">
-        Data entry and analysis aren't available in this version of Rigor yet - this milestone
-        only covers describing your experiment. Come back once those steps are built.
+        Running an actual analysis isn't available in this version of Rigor yet
+        - that's still to come. You can enter your data now, though, and Rigor
+        will check it over.
       </p>
 
       <div className="wizard-nav">
-        <button type="button" onClick={() => onEditStep('researchQuestion')} className="wizard-back">
+        <button
+          type="button"
+          onClick={() => onEnterData(design)}
+          className="primary-action"
+        >
+          Enter your data
+        </button>
+        <button
+          type="button"
+          onClick={() => onEditStep('researchQuestion')}
+          className="wizard-back"
+        >
           Back to editing ({STEP_LABELS.researchQuestion})
         </button>
         <button type="button" onClick={onRestart} className="wizard-next">
