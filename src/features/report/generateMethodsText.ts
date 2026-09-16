@@ -13,11 +13,34 @@
 
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type {
+  ChiSquareTestResult,
+  FishersExactTestResult,
   OneWayAnovaResult,
   PairedTTestResult,
   WelchTwoSampleTTestResult,
 } from '../../statistics/types'
+import type { CategoricalTestSelection } from '../../rules/categoricalTestSelection'
 import type { NestedAggregationResult } from '../analysis-plan/aggregateByExperimentalUnit'
+import type { ContingencyTable } from '../analysis-plan/buildContingencyTable'
+
+/**
+ * Milestone 9: everything needed to describe a chi-square/Fisher's-exact
+ * contingency-table analysis. `chiSquare` is ALWAYS present (it's how
+ * `expected`/Cramer's V are computed, regardless of which test is actually
+ * reported as "the" result); `fishersExact` is only present for a 2x2 table,
+ * and only actually used as "the" result when `testSelection.test ===
+ * 'fishers-exact'` - otherwise it's kept only for transparency (e.g. a
+ * "what would Fisher's exact test have shown" aside is NOT generated; this
+ * field exists so the results view can always offer the 2x2-specific odds
+ * ratio/risk difference even when chi-square was the chosen significance
+ * test).
+ */
+export interface CategoricalAssociationAnalysis {
+  table: ContingencyTable
+  chiSquare: ChiSquareTestResult
+  fishersExact: FishersExactTestResult | null
+  testSelection: CategoricalTestSelection
+}
 
 export type MethodsAnalysis =
   | {
@@ -26,6 +49,7 @@ export type MethodsAnalysis =
     }
   | { analysisType: 'paired-t-test'; result: PairedTTestResult }
   | { analysisType: 'one-way-anova'; result: OneWayAnovaResult }
+  | { analysisType: 'categorical-association'; result: CategoricalAssociationAnalysis }
 
 /**
  * The subset of `MethodsAnalysis` used by the original 2-group results/
@@ -69,6 +93,20 @@ const TEST_NAME: Record<MethodsAnalysis['analysisType'], string> = {
   'welch-two-sample-t-test': "two-sided Welch's two-sample t-test",
   'paired-t-test': 'two-sided paired-samples t-test',
   'one-way-anova': "Welch's (unequal-variance) one-way ANOVA",
+  // The specific test (chi-square vs Fisher's exact) is chosen from the real
+  // data, per `categoricalTestSelection.ts` - see the dedicated branch in
+  // `generateMethodsText` below, which reads the actual chosen test name
+  // rather than this static placeholder.
+  'categorical-association': 'a chi-square test of association (or, when appropriate, ' +
+    "Fisher's exact test)",
+}
+
+const CATEGORICAL_TEST_DISPLAY_NAME: Record<
+  CategoricalAssociationAnalysis['testSelection']['test'],
+  string
+> = {
+  'chi-square': 'chi-square test of association',
+  'fishers-exact': "Fisher's exact test",
 }
 
 function capitalize(text: string): string {
@@ -153,7 +191,7 @@ export function generateMethodsText(input: GenerateMethodsTextInput): string {
         `"${groupBLabel}", using a ${testName}, on ${nPairs} matched ` +
         `${pluralize(nPairs, unitLabel)} measured under both conditions.`,
     )
-  } else {
+  } else if (analysis.analysisType === 'one-way-anova') {
     const { groups, pairwiseComparisons } = analysis.result
     const groupDescriptions = groups
       .map((g) => `"${g.label}" (n = ${g.n} ${pluralize(g.n, unitLabel)})`)
@@ -175,6 +213,23 @@ export function generateMethodsText(input: GenerateMethodsTextInput): string {
     if (aggregation) {
       sentences.push(describeAggregationForMethods(aggregation, unitLabel))
     }
+  } else {
+    const { table, testSelection } = analysis.result
+    const chosenTestName = CATEGORICAL_TEST_DISPLAY_NAME[testSelection.test]
+    const groupDescriptions = table.rowLabels
+      .map((label, i) => {
+        const total = table.counts[i]?.reduce((sum, count) => sum + count, 0) ?? 0
+        return `"${label}" (n = ${total} ${pluralize(total, unitLabel)})`
+      })
+      .join(', ')
+    sentences.push(
+      `${outcomeSentence} (${table.colLabels.length} categories: ` +
+        `${table.colLabels.map((c) => `"${c}"`).join(', ')}) was compared across ` +
+        `${table.rowLabels.length} independent groups, ${groupDescriptions}, using a ` +
+        `${chosenTestName} on the resulting ${table.rowLabels.length} x ${table.colLabels.length} ` +
+        'contingency table.',
+    )
+    sentences.push(testSelection.reason)
   }
 
   if (excludedObservationCount > 0) {

@@ -25,6 +25,56 @@ const TEST_DISPLAY_NAME: Record<MethodsAnalysis['analysisType'], string> = {
   'welch-two-sample-t-test': "Welch's two-sample t-test",
   'paired-t-test': 'paired-samples t-test',
   'one-way-anova': "Welch's one-way ANOVA",
+  // See `generateCategoricalInterpretationText` below - the actual test name
+  // (chi-square vs Fisher's exact) is read from the real test-selection
+  // decision, not this static placeholder.
+  'categorical-association': "a chi-square test of association or Fisher's exact test",
+}
+
+function generateCategoricalInterpretationText(
+  analysis: Extract<MethodsAnalysis, { analysisType: 'categorical-association' }>,
+): string {
+  const { table, chiSquare, fishersExact, testSelection } = analysis.result
+  const isFisher = testSelection.test === 'fishers-exact'
+  const sentences: string[] = []
+
+  if (isFisher && fishersExact) {
+    sentences.push(
+      `Fisher's exact test returned ${formatPValue(fishersExact.pValue)}. ` + testSelection.reason,
+    )
+  } else {
+    sentences.push(
+      `The chi-square test of association returned chi-square = ${formatStatistic(chiSquare.chiSquare)} ` +
+        `(df = ${chiSquare.degreesOfFreedom}), ${formatPValue(chiSquare.pValue)}. ` + testSelection.reason,
+    )
+  }
+
+  sentences.push(
+    `Cramer's V, a measure of the strength of association (0 = no association, 1 = perfect ` +
+      `association), was ${formatStatistic(chiSquare.cramersV)} for this ` +
+      `${table.rowLabels.length} x ${table.colLabels.length} table.`,
+  )
+
+  if (fishersExact) {
+    const orText =
+      fishersExact.oddsRatioCi95Low !== null && fishersExact.oddsRatioCi95High !== null
+        ? `${formatStatistic(fishersExact.oddsRatio)} (95% CI: ${formatStatistic(fishersExact.oddsRatioCi95Low)} to ${formatStatistic(fishersExact.oddsRatioCi95High)})`
+        : `${formatStatistic(fishersExact.oddsRatio)} (CI not available - a table cell was zero)`
+    sentences.push(
+      `For "${table.rowLabels[0]}" vs "${table.rowLabels[1]}", the odds ratio for "${table.colLabels[0]}" ` +
+        `was ${orText}, and the risk difference was ` +
+        `${formatStatistic(fishersExact.riskDifference)} (95% CI: ` +
+        `${formatStatistic(fishersExact.riskDifferenceCi95Low)} to ` +
+        `${formatStatistic(fishersExact.riskDifferenceCi95High)}).`,
+    )
+  }
+
+  sentences.push(
+    'This describes the pattern observed in this sample; it does not, by itself, prove a cause, ' +
+      "and it is not a judgment of whether the study's design was correct.",
+  )
+
+  return sentences.join(' ')
 }
 
 function generateAnovaInterpretationText(
@@ -72,6 +122,13 @@ export function generateInterpretationText(
   if (analysis.analysisType === 'one-way-anova') {
     return generateAnovaInterpretationText(design, {
       analysisType: 'one-way-anova',
+      result: analysis.result,
+    })
+  }
+
+  if (analysis.analysisType === 'categorical-association') {
+    return generateCategoricalInterpretationText({
+      analysisType: 'categorical-association',
       result: analysis.result,
     })
   }

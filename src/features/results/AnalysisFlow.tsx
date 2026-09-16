@@ -5,7 +5,12 @@ import type { ProjectAnalysisResult, RigorProject } from '../../models/ProjectFi
 import { PROJECT_FILE_SCHEMA_VERSION } from '../../models/ProjectFile'
 import { recommendAnalysis } from '../../rules/analysisRules'
 import { analyzeReplicationStructure } from '../../rules/replicationRules'
-import type { NormalityDiagnosticsResult } from '../../statistics/types'
+import { selectCategoricalTest } from '../../rules/categoricalTestSelection'
+import type {
+  ChiSquareTestResult,
+  FishersExactTestResult,
+  NormalityDiagnosticsResult,
+} from '../../statistics/types'
 import {
   onStatisticsProgress,
   runStatistics,
@@ -17,6 +22,7 @@ import {
   summarizeAggregation,
   type NestedAggregationResult,
 } from '../analysis-plan/aggregateByExperimentalUnit'
+import { buildContingencyTable } from '../analysis-plan/buildContingencyTable'
 import {
   buildOneWayAnovaRequest,
   buildStatisticsRequest,
@@ -28,6 +34,7 @@ import { downloadProjectFile } from '../report/exportProject'
 import type { MethodsAnalysis, TwoGroupMethodsAnalysis } from '../report/generateMethodsText'
 import { AnalysisExplanation } from './AnalysisExplanation'
 import { AnovaResultsView, type AnovaGroupNormalityState } from './AnovaResultsView'
+import { CategoricalResultsView } from './CategoricalResultsView'
 import { PseudoreplicationCheckStep } from './PseudoreplicationCheckStep'
 import { ResultsView } from './ResultsView'
 
@@ -76,11 +83,19 @@ export type AnalysisReportContext =
       normalityByGroup: Record<string, NormalityDiagnosticsResult>
       excludedObservationCount: number
     }
+  | {
+      kind: 'categorical-association'
+      design: ExperimentDesign
+      dataset: Dataset
+      analysis: Extract<MethodsAnalysis, { analysisType: 'categorical-association' }>
+      excludedObservationCount: number
+    }
 
 const IMPLEMENTED_ANALYSIS_TYPES = new Set([
   'welch-two-sample-t-test',
   'paired-t-test',
   'one-way-anova',
+  'categorical-association',
 ])
 
 const LOADING_STAGE_LABEL: Record<LoadingStage, string> = {
@@ -114,6 +129,20 @@ type AnovaFlowState =
       kind: 'ready'
       analysis: Extract<MethodsAnalysis, { analysisType: 'one-way-anova' }>
       normalityByGroup: Record<string, AnovaGroupNormalityState>
+    }
+
+/**
+ * Milestone 9: the categorical-association (chi-square/Fisher's exact)
+ * analog of `FlowState`/`AnovaFlowState` above - a parallel, self-contained
+ * state machine that only ever activates when the rules engine recommends
+ * `'categorical-association'`.
+ */
+type CategoricalFlowState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | {
+      kind: 'ready'
+      analysis: Extract<MethodsAnalysis, { analysisType: 'categorical-association' }>
     }
 
 function excludedRowCount(dataset: Dataset): number {
@@ -196,6 +225,10 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
 
   const isAnovaRecommended =
     recommendation.status === 'supported' && recommendation.analysisType === 'one-way-anova'
+
+  const isCategoricalRecommended =
+    recommendation.status === 'supported' &&
+    recommendation.analysisType === 'categorical-association'
 
   const buildResult: BuildStatisticsRequestResult | undefined = useMemo(() => {
     if (!isTwoGroupAnalysis || recommendation.status !== 'supported') return undefined
@@ -343,6 +376,83 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     }
   }, [anovaBuildResult])
 
+  // --- Milestone 9: chi-square / Fisher's exact contingency-table analysis -
+  // A third parallel, self-contained state machine, alongside the 2-group
+  // and one-way-ANOVA ones above - only ever activates when the rules
+  // engine recommends `'categorical-association'`. Builds the contingency
+  // table (independent-groups format only), always runs the chi-square test
+  // (needed for expected counts + Cramer's V regardless of which test is
+  // ultimately reported), decides chi-square vs Fisher's exact from those
+  // REAL expected counts via `categoricalTestSelection.ts`, and - only for a
+  // 2x2 table - also runs Fisher's exact test so its 2x2-specific odds
+  // ratio/risk difference are always available even when chi-square is the
+  // chosen significance test.
+  const categoricalBuildResult = useMemo(() => {
+    if (!isCategoricalRecommended) return undefined
+    return buildContingencyTable(design, dataset)
+  }, [isCategoricalRecommended, design, dataset])
+
+  const [categoricalState, setCategoricalState] = useState<CategoricalFlowState>({
+    kind: 'loading',
+  })
+  const [categoricalLoadingStage, setCategoricalLoadingStage] = useState<LoadingStage>('idle')
+
+  useEffect(() => {
+    if (!categoricalBuildResult || categoricalBuildResult.status !== 'ready') return
+    return onStatisticsProgress(setCategoricalLoadingStage)
+  }, [categoricalBuildResult])
+
+  useEffect(() => {
+    if (!categoricalBuildResult || categoricalBuildResult.status !== 'ready') return
+    let cancelled = false
+
+    async function run() {
+      if (!categoricalBuildResult || categoricalBuildResult.status !== 'ready') return
+      setCategoricalState({ kind: 'loading' })
+      const { table } = categoricalBuildResult
+
+      const chiResponse = await runStatistics({
+        analysisType: 'chi-square-test',
+        payload: { table: table.counts },
+      })
+      if (cancelled) return
+
+      if (!chiResponse.success) {
+        setCategoricalState({ kind: 'error', message: chiResponse.error.message })
+        return
+      }
+
+      const chiSquare = chiResponse.result.result as ChiSquareTestResult
+      const testSelection = selectCategoricalTest(chiSquare.expected)
+      const is2x2 = table.rowLabels.length === 2 && table.colLabels.length === 2
+
+      let fishersExact: FishersExactTestResult | null = null
+      if (is2x2) {
+        const fisherResponse = await runStatistics({
+          analysisType: 'fishers-exact-test',
+          payload: { table: table.counts },
+        })
+        if (cancelled) return
+        if (!fisherResponse.success) {
+          setCategoricalState({ kind: 'error', message: fisherResponse.error.message })
+          return
+        }
+        fishersExact = fisherResponse.result.result as FishersExactTestResult
+      }
+
+      const analysis: Extract<MethodsAnalysis, { analysisType: 'categorical-association' }> = {
+        analysisType: 'categorical-association',
+        result: { table, chiSquare, fishersExact, testSelection },
+      }
+      setCategoricalState({ kind: 'ready', analysis })
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [categoricalBuildResult])
+
   if (nestedUnsupportedRelationship) {
     return (
       <AnalysisExplanation
@@ -436,6 +546,59 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
         groups={anovaGroups}
         normalityByGroup={anovaState.normalityByGroup}
         onOpenReport={handleOpenAnovaReport}
+      />
+    )
+  }
+
+  if (isCategoricalRecommended) {
+    if (!categoricalBuildResult || categoricalBuildResult.status === 'insufficient-data') {
+      return (
+        <AnalysisExplanation
+          recommendation={recommendation}
+          insufficientDataMessage={categoricalBuildResult?.message}
+        />
+      )
+    }
+
+    if (categoricalState.kind === 'loading') {
+      return (
+        <section aria-labelledby="analysis-loading-title" role="status">
+          <h2 id="analysis-loading-title">Running your analysis</h2>
+          <p>{LOADING_STAGE_LABEL[categoricalLoadingStage]}</p>
+        </section>
+      )
+    }
+
+    if (categoricalState.kind === 'error') {
+      return (
+        <section aria-labelledby="analysis-error-title">
+          <h2 id="analysis-error-title">The analysis couldn't be completed</h2>
+          <p className="field-error">{categoricalState.message}</p>
+          <div className="wizard-nav">
+            <button type="button" onClick={onExit} className="wizard-back">
+              Back to home
+            </button>
+          </div>
+        </section>
+      )
+    }
+
+    function handleOpenCategoricalReport() {
+      if (categoricalState.kind !== 'ready') return
+      onOpenReport({
+        kind: 'categorical-association',
+        design,
+        dataset,
+        analysis: categoricalState.analysis,
+        excludedObservationCount: excludedRowCount(dataset),
+      })
+    }
+
+    return (
+      <CategoricalResultsView
+        design={design}
+        analysis={categoricalState.analysis}
+        onOpenReport={handleOpenCategoricalReport}
       />
     )
   }

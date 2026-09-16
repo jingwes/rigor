@@ -18,9 +18,12 @@ import descriptivesSource from './python/descriptives.py?raw'
 import twoGroupSource from './python/two_group.py?raw'
 import normalitySource from './python/normality.py?raw'
 import anovaSource from './python/anova.py?raw'
+import categoricalSource from './python/categorical.py?raw'
 import type {
   AnalysisResult,
+  ChiSquareTestResult,
   DescriptivesResult,
+  FishersExactTestResult,
   NormalityDiagnosticsResult,
   OneWayAnovaResult,
   PairedTTestResult,
@@ -42,6 +45,10 @@ export function installStatisticsPython(pyodide: PyodideInterface): void {
   // `_descriptive_summary`/`_validate_numeric_list` (from descriptives.py)
   // directly out of the shared namespace, so it must be installed last.
   pyodide.runPython(anovaSource)
+  // categorical.py is self-contained (no calls into the other modules), so
+  // its position here relative to the others doesn't matter - installed
+  // last purely by convention (newest module last).
+  pyodide.runPython(categoricalSource)
 }
 
 /** Name of the Python entry point for each analysis type, kept in one place. */
@@ -51,6 +58,8 @@ const ENTRY_POINT_BY_ANALYSIS_TYPE = {
   'paired-t-test': 'paired_t_test_json',
   'normality-diagnostics': 'normality_diagnostics_json',
   'one-way-anova': 'one_way_anova_json',
+  'chi-square-test': 'chi_square_test_json',
+  'fishers-exact-test': 'fishers_exact_test_json',
 } as const satisfies Record<StatisticsRequest['analysisType'], string>
 
 /**
@@ -123,6 +132,22 @@ function computeResult(
         request.payload,
       ) as OneWayAnovaResult
       return { analysisType: 'one-way-anova', result }
+    }
+    case 'chi-square-test': {
+      const result = callJsonEntryPoint(
+        pyodide,
+        ENTRY_POINT_BY_ANALYSIS_TYPE['chi-square-test'],
+        request.payload,
+      ) as ChiSquareTestResult
+      return { analysisType: 'chi-square-test', result }
+    }
+    case 'fishers-exact-test': {
+      const result = callJsonEntryPoint(
+        pyodide,
+        ENTRY_POINT_BY_ANALYSIS_TYPE['fishers-exact-test'],
+        request.payload,
+      ) as FishersExactTestResult
+      return { analysisType: 'fishers-exact-test', result }
     }
   }
 }

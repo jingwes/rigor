@@ -2,6 +2,7 @@ import type { AnalysisReportContext } from '../results/AnalysisFlow'
 import { describeDesign } from '../experiment-design/describeDesign'
 import { DotPlot } from '../../components/charts/DotPlot'
 import { PairedDotPlot } from '../../components/charts/PairedDotPlot'
+import { CategoricalBarChart } from '../../components/charts/CategoricalBarChart'
 import { formatPValue } from './formatPValue'
 import { formatStatistic } from './formatStatistic'
 import { generateInterpretationText } from './generateInterpretationText'
@@ -20,6 +21,7 @@ const TEST_DISPLAY_NAME = {
 
 type TwoGroupContext = Extract<AnalysisReportContext, { kind: 'two-group' }>
 type AnovaContext = Extract<AnalysisReportContext, { kind: 'one-way-anova' }>
+type CategoricalContext = Extract<AnalysisReportContext, { kind: 'categorical-association' }>
 
 /** The "Visualization" + "Statistical analysis" sections for a 2-group analysis. */
 function TwoGroupAnalysisSections({ context }: { context: TwoGroupContext }) {
@@ -251,6 +253,111 @@ function AnovaAnalysisSections({ context }: { context: AnovaContext }) {
 }
 
 /**
+ * Milestone 9: the "Your data" (contingency table + bar chart) + "Test
+ * result" sections for a chi-square/Fisher's-exact categorical-association
+ * analysis. Mirrors `CategoricalResultsView`'s content, adapted for print.
+ */
+function CategoricalAnalysisSections({ context }: { context: CategoricalContext }) {
+  const { design, analysis } = context
+  const { table, chiSquare, fishersExact, testSelection } = analysis.result
+  const is2x2 = table.rowLabels.length === 2 && table.colLabels.length === 2
+  const usedFisher = testSelection.test === 'fishers-exact'
+
+  return (
+    <>
+      <section aria-labelledby="report-visualization-title">
+        <h2 id="report-visualization-title">Visualization</h2>
+        <p>Chart type: bar chart of raw counts per group and outcome category.</p>
+        <table className="results-table">
+          <thead>
+            <tr>
+              <th scope="col">Group</th>
+              {table.colLabels.map((col) => (
+                <th scope="col" key={col}>
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rowLabels.map((rowLabel, rowIndex) => (
+              <tr key={rowLabel}>
+                <th scope="row">{rowLabel}</th>
+                {table.counts[rowIndex].map((count, colIndex) => (
+                  <td key={table.colLabels[colIndex]}>{count}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <CategoricalBarChart
+          groupLabels={table.rowLabels}
+          categoryLabels={table.colLabels}
+          counts={table.counts}
+          outcomeName={design.outcome.name}
+        />
+      </section>
+
+      <section aria-labelledby="report-analysis-title">
+        <h2 id="report-analysis-title">Statistical analysis</h2>
+        <p>{testSelection.reason}</p>
+        <dl className="results-stats">
+          {usedFisher && fishersExact ? (
+            <div>
+              <dt>Test</dt>
+              <dd>Fisher's exact test - P-value: {formatPValue(fishersExact.pValue)}</dd>
+            </div>
+          ) : (
+            <>
+              <div>
+                <dt>Test</dt>
+                <dd>Chi-square test of association</dd>
+              </div>
+              <div>
+                <dt>Test statistic</dt>
+                <dd>
+                  chi-square = {formatStatistic(chiSquare.chiSquare)}, df ={' '}
+                  {chiSquare.degreesOfFreedom}
+                </dd>
+              </div>
+              <div>
+                <dt>P-value</dt>
+                <dd>{formatPValue(chiSquare.pValue)}</dd>
+              </div>
+            </>
+          )}
+          <div>
+            <dt>Cramer's V</dt>
+            <dd>{formatStatistic(chiSquare.cramersV)}</dd>
+          </div>
+          {is2x2 && fishersExact && (
+            <>
+              <div>
+                <dt>Odds ratio</dt>
+                <dd>
+                  {formatStatistic(fishersExact.oddsRatio)}
+                  {fishersExact.oddsRatioCi95Low !== null && fishersExact.oddsRatioCi95High !== null
+                    ? ` (95% CI: ${formatStatistic(fishersExact.oddsRatioCi95Low)} to ${formatStatistic(fishersExact.oddsRatioCi95High)})`
+                    : ' (CI not available)'}
+                </dd>
+              </div>
+              <div>
+                <dt>Risk difference</dt>
+                <dd>
+                  {formatStatistic(fishersExact.riskDifference)} (95% CI:{' '}
+                  {formatStatistic(fishersExact.riskDifferenceCi95Low)} to{' '}
+                  {formatStatistic(fishersExact.riskDifferenceCi95High)})
+                </dd>
+              </div>
+            </>
+          )}
+        </dl>
+      </section>
+    </>
+  )
+}
+
+/**
  * Milestone 6: a dedicated, print-friendly report view. Reachable from the
  * results page ("View printable report"); relies entirely on the browser's
  * native print-to-PDF (`window.print()`) rather than a PDF library. Per the
@@ -366,10 +473,10 @@ export function ReportView({ context, onClose }: ReportViewProps) {
         </section>
       )}
 
-      {context.kind === 'two-group' ? (
-        <TwoGroupAnalysisSections context={context} />
-      ) : (
-        <AnovaAnalysisSections context={context} />
+      {context.kind === 'two-group' && <TwoGroupAnalysisSections context={context} />}
+      {context.kind === 'one-way-anova' && <AnovaAnalysisSections context={context} />}
+      {context.kind === 'categorical-association' && (
+        <CategoricalAnalysisSections context={context} />
       )}
 
       <section aria-labelledby="report-methods-title">

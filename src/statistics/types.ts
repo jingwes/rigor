@@ -58,6 +58,20 @@ export interface OneWayAnovaPayload {
 }
 
 /**
+ * Milestone 9: a groups x outcome-categories contingency table of raw
+ * counts. `table[rowIndex][colIndex]` is the count for that group/category
+ * pair - row/column LABELS are not part of this payload (the worker only
+ * ever sees counts), so the TypeScript caller (`buildContingencyTable.ts`,
+ * `CategoricalResultsView.tsx`) is responsible for zipping the labels back
+ * onto `observed`/`expected` in the result, which are returned in the exact
+ * same row/column order as `table`.
+ */
+export interface ContingencyTablePayload {
+  /** Rows = groups, columns = outcome categories. At least 2x2. */
+  table: number[][]
+}
+
+/**
  * A request for one of the fixed, predefined analyses this worker exposes.
  * `analysisType` is the sole discriminant; there is no way to pass raw
  * Python through this contract.
@@ -76,6 +90,16 @@ export type StatisticsRequest =
       payload: NormalityDiagnosticsPayload
     }
   | { id: string; analysisType: 'one-way-anova'; payload: OneWayAnovaPayload }
+  | {
+      id: string
+      analysisType: 'chi-square-test'
+      payload: ContingencyTablePayload
+    }
+  | {
+      id: string
+      analysisType: 'fishers-exact-test'
+      payload: ContingencyTablePayload
+    }
 
 export type AnalysisType = StatisticsRequest['analysisType']
 
@@ -221,6 +245,64 @@ export interface OneWayAnovaResult {
   pairwiseCorrectionMethod: 'holm_bonferroni'
 }
 
+/**
+ * Milestone 9: the general r x c chi-square test of association
+ * (`scipy.stats.chi2_contingency`). Valid for any table with >= 2 rows and
+ * >= 2 columns - not restricted to 2x2. `observed`/`expected` are returned
+ * in the same row/column order as the request's `table`, so the caller can
+ * zip real row/column labels back onto them. `cramersV` is always
+ * computed (it generalizes to any table size) - see `categorical.py` for
+ * the formula and its independent verification.
+ *
+ * `expected` is exposed specifically so `src/rules/categoricalTestSelection.ts`
+ * can apply Cochran's rule (and so the UI can show it transparently) -
+ * nothing in this worker uses it to pick a test itself.
+ */
+export interface ChiSquareTestResult {
+  chiSquare: number
+  degreesOfFreedom: number
+  /** Two-sided p-value. */
+  pValue: number
+  /** Observed counts, same shape/order as the request's `table`. */
+  observed: number[][]
+  /** Expected counts under the null of independence, same shape/order as `table`. */
+  expected: number[][]
+  /** Total N across the whole table. */
+  n: number
+  /** Cramer's V: sqrt(chiSquare / (n * (min(rows, cols) - 1))). */
+  cramersV: number
+}
+
+/**
+ * Milestone 9: Fisher's exact test for a 2x2 table only, plus the
+ * 2x2-specific odds ratio and risk difference (each with its own 95% CI).
+ * See `categorical.py`'s docstring for the exact formulas and their
+ * independent verification against real R output.
+ *
+ * `oddsRatioCi95Low`/`oddsRatioCi95High` are `null` when any cell of the
+ * table is zero (the log-odds-ratio Wald CI is undefined in that case) -
+ * `oddsRatio`/`pValue` themselves are still always reported (SciPy handles
+ * zero cells for those).
+ */
+export interface FishersExactTestResult {
+  /** Sample odds ratio (a*d)/(b*c) for table [[a, b], [c, d]], from `scipy.stats.fisher_exact`. */
+  oddsRatio: number
+  /** Two-sided p-value. */
+  pValue: number
+  /** Wald 95% CI for the odds ratio (log-odds-ratio scale). `null` if any cell is zero. */
+  oddsRatioCi95Low: number | null
+  oddsRatioCi95High: number | null
+  /**
+   * Difference in the proportion of the first outcome category (column 0)
+   * between the two groups (row 0 - row 1). See `categorical.py` for the
+   * exact convention.
+   */
+  riskDifference: number
+  /** Wald 95% CI for the risk difference. */
+  riskDifferenceCi95Low: number
+  riskDifferenceCi95High: number
+}
+
 export type AnalysisResult =
   | { analysisType: 'descriptives'; result: DescriptivesResult }
   | {
@@ -230,6 +312,8 @@ export type AnalysisResult =
   | { analysisType: 'paired-t-test'; result: PairedTTestResult }
   | { analysisType: 'normality-diagnostics'; result: NormalityDiagnosticsResult }
   | { analysisType: 'one-way-anova'; result: OneWayAnovaResult }
+  | { analysisType: 'chi-square-test'; result: ChiSquareTestResult }
+  | { analysisType: 'fishers-exact-test'; result: FishersExactTestResult }
 
 export interface StatisticsErrorInfo {
   message: string

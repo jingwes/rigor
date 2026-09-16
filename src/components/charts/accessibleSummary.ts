@@ -84,3 +84,40 @@ export function describePairedDotPlot(
 /** Re-exported so callers/tests that only need interval math don't have to
  * import from two places. */
 export { computeInterval }
+
+/**
+ * Milestone 9: screen-reader-accessible text summary for
+ * `CategoricalBarChart`, generated from the exact same
+ * groups/categories/counts data driving the visual chart.
+ *
+ * "Bar chart of recovery status by group. Control (n=30): improved 20
+ * (66.7%), not improved 10 (33.3%). Treatment (n=30): improved 10 (33.3%),
+ * not improved 20 (66.7%)."
+ */
+export function describeCategoricalBarChart(
+  groupLabels: string[],
+  categoryLabels: string[],
+  counts: number[][],
+  outcomeName?: string,
+): string {
+  const subject = outcomeName?.trim() ? outcomeName.trim() : 'the outcome'
+
+  const groupDescriptions = groupLabels.map((groupLabel, groupIndex) => {
+    const rowCounts = counts[groupIndex] ?? []
+    const total = rowCounts.reduce((sum, count) => sum + count, 0)
+    const categoryDescriptions = categoryLabels
+      .map((categoryLabel, categoryIndex) => {
+        const count = rowCounts[categoryIndex] ?? 0
+        const percent = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0'
+        return `${categoryLabel} ${count} (${percent}%)`
+      })
+      .join(', ')
+    return `${groupLabel} (n=${total}): ${categoryDescriptions}`
+  })
+
+  return (
+    `Bar chart of ${subject} by group. ` +
+    `${groupDescriptions.join('. ')}. ` +
+    'Raw counts are always shown alongside percentages.'
+  )
+}

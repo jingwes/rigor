@@ -26,8 +26,11 @@ import type {
 export type {
   AnalysisResult,
   AnalysisType,
+  ChiSquareTestResult,
+  ContingencyTablePayload,
   DescriptivesPayload,
   DescriptivesResult,
+  FishersExactTestResult,
   LoadingStage,
   NormalityDiagnosticsPayload,
   NormalityDiagnosticsResult,
