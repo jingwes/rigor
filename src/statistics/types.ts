@@ -72,6 +72,18 @@ export interface ContingencyTablePayload {
 }
 
 /**
+ * Milestone 10: Pearson correlation + simple linear regression between two
+ * continuous variables, each assumed to be measured once per independent
+ * experimental unit. Unlike every other payload in this file, there is no
+ * notion of "groups" here - `x[i]`/`y[i]` are the paired X/Y measurements for
+ * the i-th unit. Equal length, n >= 3 (see `correlation.py`).
+ */
+export interface PearsonCorrelationRegressionPayload {
+  x: number[]
+  y: number[]
+}
+
+/**
  * A request for one of the fixed, predefined analyses this worker exposes.
  * `analysisType` is the sole discriminant; there is no way to pass raw
  * Python through this contract.
@@ -99,6 +111,11 @@ export type StatisticsRequest =
       id: string
       analysisType: 'fishers-exact-test'
       payload: ContingencyTablePayload
+    }
+  | {
+      id: string
+      analysisType: 'pearson-correlation-regression'
+      payload: PearsonCorrelationRegressionPayload
     }
 
 export type AnalysisType = StatisticsRequest['analysisType']
@@ -303,6 +320,44 @@ export interface FishersExactTestResult {
   riskDifferenceCi95High: number
 }
 
+/**
+ * Milestone 10: the correlation coefficient (with its Fisher-z CI, `null`
+ * for n < 4 - see `correlation.py`) plus its two-sided p-value.
+ */
+export interface PearsonCorrelationResult {
+  r: number
+  pValue: number
+  ci95Low: number | null
+  ci95High: number | null
+}
+
+/**
+ * Milestone 10: the simple-linear-regression fit (y ~ x) that goes with
+ * `PearsonCorrelationResult` above. `pValue` here tests the same null
+ * hypothesis as the correlation's own p-value (that the true
+ * slope/correlation is zero) and is numerically identical for a simple
+ * one-predictor regression - both are reported since each result object is
+ * meant to stand on its own.
+ */
+export interface SimpleLinearRegressionResult {
+  slope: number
+  intercept: number
+  slopeCi95Low: number
+  slopeCi95High: number
+  pValue: number
+  rSquared: number
+  /** Fitted y-values at each input x, in the same order as the request's `x`. */
+  fittedValues: number[]
+  /** y - fitted, same order as the request's `x`/`y`. */
+  residuals: number[]
+}
+
+export interface PearsonCorrelationRegressionResult {
+  n: number
+  correlation: PearsonCorrelationResult
+  regression: SimpleLinearRegressionResult
+}
+
 export type AnalysisResult =
   | { analysisType: 'descriptives'; result: DescriptivesResult }
   | {
@@ -314,6 +369,10 @@ export type AnalysisResult =
   | { analysisType: 'one-way-anova'; result: OneWayAnovaResult }
   | { analysisType: 'chi-square-test'; result: ChiSquareTestResult }
   | { analysisType: 'fishers-exact-test'; result: FishersExactTestResult }
+  | {
+      analysisType: 'pearson-correlation-regression'
+      result: PearsonCorrelationRegressionResult
+    }
 
 export interface StatisticsErrorInfo {
   message: string

@@ -19,6 +19,7 @@ import twoGroupSource from './python/two_group.py?raw'
 import normalitySource from './python/normality.py?raw'
 import anovaSource from './python/anova.py?raw'
 import categoricalSource from './python/categorical.py?raw'
+import correlationSource from './python/correlation.py?raw'
 import type {
   AnalysisResult,
   ChiSquareTestResult,
@@ -27,6 +28,7 @@ import type {
   NormalityDiagnosticsResult,
   OneWayAnovaResult,
   PairedTTestResult,
+  PearsonCorrelationRegressionResult,
   StatisticsRequest,
   StatisticsResponse,
   WelchTwoSampleTTestResult,
@@ -49,6 +51,9 @@ export function installStatisticsPython(pyodide: PyodideInterface): void {
   // its position here relative to the others doesn't matter - installed
   // last purely by convention (newest module last).
   pyodide.runPython(categoricalSource)
+  // correlation.py (Milestone 10) is also self-contained - no dependency on
+  // any other module here, and no group-comparison module depends on it.
+  pyodide.runPython(correlationSource)
 }
 
 /** Name of the Python entry point for each analysis type, kept in one place. */
@@ -60,6 +65,7 @@ const ENTRY_POINT_BY_ANALYSIS_TYPE = {
   'one-way-anova': 'one_way_anova_json',
   'chi-square-test': 'chi_square_test_json',
   'fishers-exact-test': 'fishers_exact_test_json',
+  'pearson-correlation-regression': 'pearson_correlation_regression_json',
 } as const satisfies Record<StatisticsRequest['analysisType'], string>
 
 /**
@@ -148,6 +154,14 @@ function computeResult(
         request.payload,
       ) as FishersExactTestResult
       return { analysisType: 'fishers-exact-test', result }
+    }
+    case 'pearson-correlation-regression': {
+      const result = callJsonEntryPoint(
+        pyodide,
+        ENTRY_POINT_BY_ANALYSIS_TYPE['pearson-correlation-regression'],
+        request.payload,
+      ) as PearsonCorrelationRegressionResult
+      return { analysisType: 'pearson-correlation-regression', result }
     }
   }
 }

@@ -107,6 +107,14 @@ async function runWizardToDataImport(outcomeType: 'numerical' | 'categorical' = 
   render(<App />)
   fireEvent.click(screen.getByRole('button', { name: 'Start an analysis' }))
 
+  // Milestone 10: the new research-question-shape fork now sits ahead of the
+  // (unchanged) group-comparison wizard.
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'My question is about differences between groups or conditions',
+    }),
+  )
+
   fireEvent.change(screen.getByLabelText('What are you trying to find out?'), {
     target: { value: 'Does fertilizer X increase plant height?' },
   })
@@ -190,6 +198,14 @@ describe('end-to-end: wizard -> summary -> data import -> real results', () => {
   it('shows an honest explanation, never fake results, for a design with 3+ groups', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Start an analysis' }))
+
+    // Milestone 10: the new research-question-shape fork now sits ahead of
+    // the (unchanged) group-comparison wizard.
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'My question is about differences between groups or conditions',
+      }),
+    )
 
     fireEvent.change(screen.getByLabelText('What did you measure?'), {
       target: { value: 'reaction time' },
