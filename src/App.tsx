@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react'
 import { HomePage } from './app/HomePage'
+import { PwaUpdateNotice } from './app/PwaUpdateNotice'
 import { WizardProvider } from './features/experiment-design/WizardProvider'
 import { ExperimentDesignWizard } from './features/experiment-design/ExperimentDesignWizard'
 import { QuestionForkStep } from './features/experiment-design/QuestionForkStep'
 import { DataImportFlow } from './features/data-import/DataImportFlow'
-import { AnalysisFlow, type AnalysisReportContext } from './features/results/AnalysisFlow'
+import {
+  AnalysisFlow,
+  type AnalysisReportContext,
+} from './features/results/AnalysisFlow'
 import { useAnalysisPlanAudit } from './features/results/useAnalysisPlanAudit'
 import { buildReportContextFromProject } from './features/results/restoreReportContext'
 import { CorrelationDesignFlow } from './features/correlation/CorrelationDesignFlow'
-import { CorrelationDataEntry, type CorrelationDataReady } from './features/correlation/CorrelationDataEntry'
+import {
+  CorrelationDataEntry,
+  type CorrelationDataReady,
+} from './features/correlation/CorrelationDataEntry'
 import { CorrelationFlow } from './features/correlation/CorrelationFlow'
 import { ReportView } from './features/report/ReportView'
 import type { Dataset } from './models/Dataset'
@@ -66,7 +73,9 @@ function App() {
 
   // --- Milestone 12: local persistence (IndexedDB autosave + reopen) --------
   const [hasAutosave, setHasAutosave] = useState(false)
-  const [openProjectError, setOpenProjectError] = useState<string | undefined>(undefined)
+  const [openProjectError, setOpenProjectError] = useState<string | undefined>(
+    undefined,
+  )
 
   // On first load, check whether an autosaved project already exists in this
   // browser's IndexedDB, so the homepage can offer a real "Continue last
@@ -199,8 +208,12 @@ function App() {
         groupALabel: context.groupALabel,
         groupBLabel: context.groupBLabel,
         normalityDiagnosticsByGroup: {
-          ...(context.normalityA ? { [context.groupALabel]: context.normalityA } : {}),
-          ...(context.normalityB ? { [context.groupBLabel]: context.normalityB } : {}),
+          ...(context.normalityA
+            ? { [context.groupALabel]: context.normalityA }
+            : {}),
+          ...(context.normalityB
+            ? { [context.groupBLabel]: context.normalityB }
+            : {}),
         },
         aggregation: context.aggregation,
       }
@@ -227,6 +240,7 @@ function App() {
 
   return (
     <main>
+      <PwaUpdateNotice />
       <h1>Rigor</h1>
       <p className="tagline">Statistics that start with your experiment.</p>
 
@@ -302,13 +316,15 @@ function App() {
         />
       )}
 
-      {view === 'correlation-results' && correlationDesign && correlationData && (
-        <CorrelationFlow
-          design={correlationDesign}
-          data={correlationData}
-          onExit={() => setView('home')}
-        />
-      )}
+      {view === 'correlation-results' &&
+        correlationDesign &&
+        correlationData && (
+          <CorrelationFlow
+            design={correlationDesign}
+            data={correlationData}
+            onExit={() => setView('home')}
+          />
+        )}
     </main>
   )
 }

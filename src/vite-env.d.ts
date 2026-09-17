@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/react" />
 
 /**
  * Injected by `vite.config.ts`'s `define`, straight from `package.json` at
