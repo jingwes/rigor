@@ -152,6 +152,10 @@ describe('AnalysisFlow: nested dataset + independent relationship (Milestone 7)'
         <AnalysisFlow
           design={design}
           dataset={dataset}
+          auditHistory={[]}
+          isPlanLocked
+          onLockPlan={() => {}}
+          onResultsReached={() => {}}
           onExit={() => {}}
           onOpenReport={(context) => {
             reportContext = context
@@ -227,7 +231,18 @@ describe('AnalysisFlow: nested dataset + independent relationship (Milestone 7)'
       design,
     })
 
-    render(<AnalysisFlow design={design} dataset={dataset} onExit={() => {}} onOpenReport={() => {}} />)
+    render(
+      <AnalysisFlow
+        design={design}
+        dataset={dataset}
+        auditHistory={[]}
+        isPlanLocked
+        onLockPlan={() => {}}
+        onResultsReached={() => {}}
+        onExit={() => {}}
+        onOpenReport={() => {}}
+      />,
+    )
 
     // No pseudoreplication (1 measurement per unit) - no confirmation click required.
     expect(screen.queryByText('Check your sample size before analyzing')).not.toBeInTheDocument()
@@ -245,7 +260,18 @@ describe('AnalysisFlow: nested dataset + independent relationship (Milestone 7)'
     }
     const dataset = buildNestedDatasetFixture(design)
 
-    render(<AnalysisFlow design={design} dataset={dataset} onExit={() => {}} onOpenReport={() => {}} />)
+    render(
+      <AnalysisFlow
+        design={design}
+        dataset={dataset}
+        auditHistory={[]}
+        isPlanLocked
+        onLockPlan={() => {}}
+        onResultsReached={() => {}}
+        onExit={() => {}}
+        onOpenReport={() => {}}
+      />,
+    )
 
     expect(screen.getByText("Rigor can't run this nested-design analysis yet")).toBeInTheDocument()
     expect(screen.getByText(/mixed-effects models, which this version does not yet support/)).toBeInTheDocument()

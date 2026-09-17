@@ -5,6 +5,7 @@ import { ExperimentDesignWizard } from './features/experiment-design/ExperimentD
 import { QuestionForkStep } from './features/experiment-design/QuestionForkStep'
 import { DataImportFlow } from './features/data-import/DataImportFlow'
 import { AnalysisFlow, type AnalysisReportContext } from './features/results/AnalysisFlow'
+import { useAnalysisPlanAudit } from './features/results/useAnalysisPlanAudit'
 import { CorrelationDesignFlow } from './features/correlation/CorrelationDesignFlow'
 import { CorrelationDataEntry, type CorrelationDataReady } from './features/correlation/CorrelationDataEntry'
 import { CorrelationFlow } from './features/correlation/CorrelationFlow'
@@ -37,6 +38,12 @@ function App() {
     AnalysisReportContext | undefined
   >(undefined)
 
+  // Milestone 11: analysis-plan locking + the append-only audit trail. Lifted
+  // up here (rather than owned locally by `AnalysisFlow`) so it survives
+  // `AnalysisFlow` unmounting/remounting when the printable report is opened
+  // and closed, and so `ReportView` can display it.
+  const analysisPlanAudit = useAnalysisPlanAudit()
+
   // Milestone 10: correlation/regression is a separate, additive branch from
   // the fork below - it never touches `activeDesign`/`activeDataset`
   // (the group-comparison `ExperimentDesign`/`Dataset` state) above.
@@ -62,6 +69,9 @@ function App() {
 
   function enterData(design: ExperimentDesign) {
     setActiveDesign(design)
+    // A fresh design starts a brand-new analysis session - reset the
+    // locking/audit trail from any previous one.
+    analysisPlanAudit.reset()
     setView('data-import')
   }
 
@@ -121,13 +131,21 @@ function App() {
         <AnalysisFlow
           design={activeDesign}
           dataset={activeDataset}
+          auditHistory={analysisPlanAudit.history}
+          isPlanLocked={analysisPlanAudit.isLocked}
+          onLockPlan={analysisPlanAudit.lock}
+          onResultsReached={analysisPlanAudit.markResultsReached}
           onExit={() => setView('home')}
           onOpenReport={openReport}
         />
       )}
 
       {view === 'report' && reportContext && (
-        <ReportView context={reportContext} onClose={() => setView('analysis')} />
+        <ReportView
+          context={reportContext}
+          auditHistory={analysisPlanAudit.history}
+          onClose={() => setView('analysis')}
+        />
       )}
 
       {view === 'correlation-design' && (

@@ -219,5 +219,13 @@ export async function uploadCsvAndGetResults(csv: string, rowCount: number) {
   await waitFor(() => expect(screen.getByText(`Preview (${rowCount} rows)`)).toBeInTheDocument())
 
   fireEvent.click(screen.getByRole('button', { name: /import this data/i }))
+
+  // Milestone 11: results are gated behind the "review your analysis plan"
+  // lock step - lock it before results are shown.
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Lock analysis plan and view results' })).toBeInTheDocument(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Lock analysis plan and view results' }))
+
   await waitFor(() => expect(screen.getByText('Your results')).toBeInTheDocument())
 }

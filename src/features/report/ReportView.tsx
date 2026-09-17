@@ -8,10 +8,20 @@ import { formatStatistic } from './formatStatistic'
 import { generateInterpretationText } from './generateInterpretationText'
 import { generateMethodsText } from './generateMethodsText'
 import { describeAggregationSampleSize } from '../analysis-plan/aggregateByExperimentalUnit'
+import type { AuditEntry } from '../../models/AuditEntry'
 
 export interface ReportViewProps {
   context: AnalysisReportContext
+  /** Milestone 11: the append-only analysis-plan-lock/audit trail, in order. */
+  auditHistory: AuditEntry[]
   onClose: () => void
+}
+
+/** e.g. `2026-09-17T17:42:00.000Z` -> `17:42`, matching the spec's example format. */
+function formatAuditTimestamp(timestamp: string): string {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return timestamp
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 const TEST_DISPLAY_NAME = {
@@ -360,10 +370,7 @@ function CategoricalAnalysisSections({ context }: { context: CategoricalContext 
 /**
  * Milestone 6: a dedicated, print-friendly report view. Reachable from the
  * results page ("View printable report"); relies entirely on the browser's
- * native print-to-PDF (`window.print()`) rather than a PDF library. Per the
- * Milestone 6 scope, this OMITS the "Analysis history" section the full
- * project spec eventually calls for - analysis-plan locking/audit history
- * is Milestone 11 and doesn't exist yet, so nothing here fakes it.
+ * native print-to-PDF (`window.print()`) rather than a PDF library.
  *
  * Milestone 8 additive extension: `context.kind` selects between the
  * original 2-group report body and a one-way-ANOVA report body (see
@@ -371,8 +378,13 @@ function CategoricalAnalysisSections({ context }: { context: CategoricalContext 
  * chrome (research question, design summary, data processing, methods,
  * interpretation, software) is generated once, from whichever `analysis`
  * variant is actually present.
+ *
+ * Milestone 11 additive extension: an "Analysis history" section listing the
+ * append-only analysis-plan-lock/audit trail, in order - this was explicitly
+ * deferred from Milestone 6 (see the old comment this replaced); it exists
+ * for real now.
  */
-export function ReportView({ context, onClose }: ReportViewProps) {
+export function ReportView({ context, auditHistory, onClose }: ReportViewProps) {
   const { design, dataset } = context
 
   const summaryLines = describeDesign(design)
@@ -496,6 +508,28 @@ export function ReportView({ context, onClose }: ReportViewProps) {
           {__APP_NAME__.slice(1)} v{__APP_VERSION__} (open-source, browser-based; Python/SciPy run
           via Pyodide, entirely client-side - no data leaves your browser).
         </p>
+      </section>
+
+      <section aria-labelledby="report-history-title">
+        <h2 id="report-history-title">Analysis history</h2>
+        {auditHistory.length === 0 ? (
+          <p>No analysis-plan events recorded yet.</p>
+        ) : (
+          <>
+            <p>
+              An honest, timestamped, append-only record of when your analysis plan was locked,
+              when results were viewed, and any changes made after that - nothing here is ever
+              hidden or edited after the fact.
+            </p>
+            <ul className="analysis-history-list">
+              {auditHistory.map((entry) => (
+                <li key={entry.id}>
+                  <strong>{formatAuditTimestamp(entry.timestamp)}</strong> {entry.description}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </section>
     </article>
   )

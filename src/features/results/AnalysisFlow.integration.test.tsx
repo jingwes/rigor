@@ -168,6 +168,15 @@ describe('end-to-end: wizard -> summary -> data import -> real results', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /import this data/i }))
 
+    // Milestone 11: results are gated behind the "review your analysis
+    // plan" lock step - confirm it appears, then lock it before results
+    // show.
+    await waitFor(() =>
+      expect(screen.getByText('Review your analysis plan')).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Your results')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Lock analysis plan and view results' }))
+
     // Real results render with the correct, independently-verified numbers.
     await waitFor(() => expect(screen.getByText('Your results')).toBeInTheDocument())
 

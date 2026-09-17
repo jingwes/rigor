@@ -6,13 +6,19 @@
  * 12's job (not built here). `schemaVersion` is bumped whenever this shape
  * changes, so a future "open project" feature can tell which shape it's
  * reading. Only fields for features that actually exist at this milestone
- * are included - nothing here describes exclusions-beyond-parsing-issues,
- * analysis-plan locking, or audit history, since none of those exist yet
- * (Milestones 9/11 respectively).
+ * are included - there is still no user-driven exclusion feature beyond
+ * automatic parsing issues (Milestone 9's scope).
+ *
+ * Milestone 11 additive extension: `analysisHistory` carries the full
+ * append-only analysis-plan-lock/audit trail (see `AuditEntry.ts`), so the
+ * downloaded project file is an honest, self-contained reproducibility
+ * record - not just the final numbers, but when the plan was locked, when
+ * results were viewed, and any changes made after that.
  */
 
 import type { Dataset } from './Dataset'
 import type { ExperimentDesign } from './ExperimentDesign'
+import type { AuditEntry } from './AuditEntry'
 import type {
   AnalysisType,
   NormalityDiagnosticsResult,
@@ -63,4 +69,11 @@ export interface RigorProject {
   /** Present only when a supported analysis actually ran successfully. */
   analysis?: ProjectAnalysisResult
   visualization?: ProjectVisualizationSettings
+  /**
+   * Milestone 11: the append-only analysis-plan-lock/audit trail, in the
+   * exact order the events happened - e.g. `'plan-locked'`, `'results-
+   * viewed'`, and any honest `'design-modified'` entries recorded after
+   * that. Always present (possibly empty) once a project can be saved.
+   */
+  analysisHistory: AuditEntry[]
 }

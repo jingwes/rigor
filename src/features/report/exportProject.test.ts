@@ -23,6 +23,7 @@ function project(): RigorProject {
       rows: [],
       issues: [],
     },
+    analysisHistory: [],
   }
 }
 
@@ -30,6 +31,57 @@ describe('serializeProject', () => {
   it('round-trips through JSON without losing data', () => {
     const json = serializeProject(project())
     expect(JSON.parse(json)).toEqual(project())
+  })
+})
+
+describe('serializeProject - Milestone 11 analysis history', () => {
+  it('round-trips the append-only audit trail, in order, including before/after payloads', () => {
+    const projectWithHistory: RigorProject = {
+      ...project(),
+      analysisHistory: [
+        {
+          id: 'entry-1',
+          timestamp: '2026-09-17T17:42:00.000Z',
+          action: 'plan-locked',
+          description: 'Analysis plan locked',
+        },
+        {
+          id: 'entry-2',
+          timestamp: '2026-09-17T17:42:05.000Z',
+          action: 'results-viewed',
+          description: 'Results viewed',
+        },
+        {
+          id: 'entry-3',
+          timestamp: '2026-09-17T17:44:00.000Z',
+          action: 'design-modified',
+          description:
+            'Modified after results were viewed: Group names changed from "Control, Treatment" ' +
+            'to "Control, High-dose".',
+          before: { groupNames: ['Control', 'Treatment'] },
+          after: { groupNames: ['Control', 'High-dose'] },
+        },
+        {
+          id: 'entry-4',
+          timestamp: '2026-09-17T17:44:00.500Z',
+          action: 'results-viewed',
+          description: 'Results viewed',
+        },
+      ],
+    }
+
+    const json = serializeProject(projectWithHistory)
+    const parsed = JSON.parse(json) as RigorProject
+
+    expect(parsed.analysisHistory).toEqual(projectWithHistory.analysisHistory)
+    expect(parsed.analysisHistory.map((e) => e.action)).toEqual([
+      'plan-locked',
+      'results-viewed',
+      'design-modified',
+      'results-viewed',
+    ])
+    expect(parsed.analysisHistory[2].before).toEqual({ groupNames: ['Control', 'Treatment'] })
+    expect(parsed.analysisHistory[2].after).toEqual({ groupNames: ['Control', 'High-dose'] })
   })
 })
 

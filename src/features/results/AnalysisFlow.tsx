@@ -3,6 +3,7 @@ import type { Dataset } from '../../models/Dataset'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type { ProjectAnalysisResult, RigorProject } from '../../models/ProjectFile'
 import { PROJECT_FILE_SCHEMA_VERSION } from '../../models/ProjectFile'
+import type { AuditEntry } from '../../models/AuditEntry'
 import { recommendAnalysis } from '../../rules/analysisRules'
 import { analyzeReplicationStructure } from '../../rules/replicationRules'
 import { selectCategoricalTest } from '../../rules/categoricalTestSelection'
@@ -33,6 +34,7 @@ import {
 import { downloadProjectFile } from '../report/exportProject'
 import type { MethodsAnalysis, TwoGroupMethodsAnalysis } from '../report/generateMethodsText'
 import { AnalysisExplanation } from './AnalysisExplanation'
+import { AnalysisPlanLockStep } from './AnalysisPlanLockStep'
 import { AnovaResultsView, type AnovaGroupNormalityState } from './AnovaResultsView'
 import { CategoricalResultsView } from './CategoricalResultsView'
 import { PseudoreplicationCheckStep } from './PseudoreplicationCheckStep'
@@ -41,6 +43,23 @@ import { ResultsView } from './ResultsView'
 export interface AnalysisFlowProps {
   design: ExperimentDesign
   dataset: Dataset
+  /**
+   * Milestone 11: the append-only analysis-plan audit trail, lifted up to
+   * the caller (`App.tsx`) so it survives this component being unmounted
+   * (e.g. when the printable report is opened) and remounted.
+   */
+  auditHistory: AuditEntry[]
+  /** Whether "Lock analysis plan and view results" has been clicked at least once this session. */
+  isPlanLocked: boolean
+  /** Append a `'plan-locked'` audit entry and proceed to show results. */
+  onLockPlan: (design: ExperimentDesign) => void
+  /**
+   * Call once a results-eligible view is about to render, while locked -
+   * logs `'results-viewed'`, or `'design-modified'` + a fresh
+   * `'results-viewed'` if the design changed since the last lock. Never
+   * blocks rendering.
+   */
+  onResultsReached: (design: ExperimentDesign) => void
   onExit: () => void
   onOpenReport: (context: AnalysisReportContext) => void
 }
@@ -185,7 +204,16 @@ function describeNestedRelationshipUnsupported(design: ExperimentDesign): string
  * relationship paired with a nested dataset gets an honest "not yet
  * supported" explanation rather than a guessed treatment.
  */
-export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: AnalysisFlowProps) {
+export function AnalysisFlow({
+  design,
+  dataset,
+  auditHistory,
+  isPlanLocked,
+  onLockPlan,
+  onResultsReached,
+  onExit,
+  onOpenReport,
+}: AnalysisFlowProps) {
   const recommendation = useMemo(() => recommendAnalysis(design), [design])
 
   const isImplemented =
@@ -453,6 +481,43 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
     }
   }, [categoricalBuildResult])
 
+  // --- Milestone 11: analysis-plan locking gate -----------------------------
+  // Whichever of the three parallel state machines above is actually active,
+  // this is true exactly when real, final results are computed and ready to
+  // be shown. Until the plan is locked (`isPlanLocked`), the branches below
+  // render `AnalysisPlanLockStep` instead of the real results view - "DESIGN
+  // phase" before "RESULTS phase" (project spec section 29). Once locked,
+  // reaching this point again (e.g. after navigating back and changing the
+  // design) reports itself via `onResultsReached`, which never blocks
+  // rendering - it only decides what to append to the audit history.
+  const isReadyForTwoGroupResults =
+    isTwoGroupAnalysis &&
+    !needsAggregationConfirmation &&
+    !!buildResult &&
+    buildResult.status === 'ready' &&
+    state.kind === 'ready'
+  const isReadyForAnovaResults =
+    isAnovaRecommended && !!anovaBuildResult && anovaBuildResult.status === 'ready' && anovaState.kind === 'ready'
+  const isReadyForCategoricalResults =
+    isCategoricalRecommended &&
+    !!categoricalBuildResult &&
+    categoricalBuildResult.status === 'ready' &&
+    categoricalState.kind === 'ready'
+  const isReadyForAnyResults =
+    isReadyForTwoGroupResults || isReadyForAnovaResults || isReadyForCategoricalResults
+
+  useEffect(() => {
+    if (isReadyForAnyResults && isPlanLocked) {
+      onResultsReached(design)
+    }
+    // Deliberately keyed on the design-relevant flags only, not on the
+    // `onResultsReached` function identity - `reachResults` (the pure state
+    // machine underneath) is itself idempotent for an unchanged design, so
+    // re-invoking it on every render would be harmless, but this keeps the
+    // effect from re-running on every unrelated parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReadyForAnyResults, isPlanLocked, design])
+
   if (nestedUnsupportedRelationship) {
     return (
       <AnalysisExplanation
@@ -515,6 +580,18 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
 
     const anovaExcludedObservationCount = excludedRowCount(dataset)
     const anovaGroups = anovaBuildResult.request.payload.groups
+
+    if (!isPlanLocked) {
+      return (
+        <AnalysisPlanLockStep
+          design={design}
+          recommendation={recommendation}
+          excludedObservationCount={anovaExcludedObservationCount}
+          onLock={() => onLockPlan(design)}
+          onBack={onExit}
+        />
+      )
+    }
 
     function handleOpenAnovaReport() {
       if (
@@ -580,6 +657,18 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
             </button>
           </div>
         </section>
+      )
+    }
+
+    if (!isPlanLocked) {
+      return (
+        <AnalysisPlanLockStep
+          design={design}
+          recommendation={recommendation}
+          excludedObservationCount={excludedRowCount(dataset)}
+          onLock={() => onLockPlan(design)}
+          onBack={onExit}
+        />
       )
     }
 
@@ -650,6 +739,19 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
   const excludedObservationCount = excludedRowCount(dataset)
   const aggregationForResult = isNestedIndependent ? aggregationResult : undefined
 
+  if (!isPlanLocked) {
+    return (
+      <AnalysisPlanLockStep
+        design={design}
+        recommendation={recommendation}
+        excludedObservationCount={excludedObservationCount}
+        aggregation={aggregationForResult}
+        onLock={() => onLockPlan(design)}
+        onBack={onExit}
+      />
+    )
+  }
+
   function handleSaveProject(settings: {
     intervalType: IntervalType
     chartCustomization: ChartCustomizationOptions
@@ -684,6 +786,7 @@ export function AnalysisFlow({ design, dataset, onExit, onOpenReport }: Analysis
         intervalType: settings.intervalType,
         chartCustomization: settings.chartCustomization,
       },
+      analysisHistory: auditHistory,
     }
 
     downloadProjectFile(project)
