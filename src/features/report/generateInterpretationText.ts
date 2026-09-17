@@ -7,10 +7,69 @@
  * works", "proves", "confirms", or anything implying the alternative
  * hypothesis was "accepted" - a single sample never establishes that.
  */
-import type { ExperimentDesign } from '../../models/ExperimentDesign'
+import type { ExperimentDesign, GroupRole } from '../../models/ExperimentDesign'
 import { formatPValue } from './formatPValue'
 import { formatStatistic } from './formatStatistic'
 import type { MethodsAnalysis } from './generateMethodsText'
+
+/**
+ * Milestone 15: plain-language names for the optional per-group control/
+ * reference designation (`design.groups.roles`). Purely cosmetic - reading
+ * this never changes what's computed, only how a comparison already decided
+ * elsewhere is phrased.
+ */
+const GROUP_ROLE_NOUN: Record<GroupRole, string> = {
+  control: 'control (reference) group',
+  'positive-control': 'positive control group',
+  'negative-control': 'negative control group',
+}
+
+function roleForGroup(design: ExperimentDesign, groupName: string | undefined): GroupRole | undefined {
+  if (!groupName) return undefined
+  return design.groups.roles?.[groupName]
+}
+
+/**
+ * Phrases a two-group comparison relative to a designated control, when
+ * exactly one of the two groups has one (e.g. "between "Drug A" and the
+ * negative control ("Vehicle")"). Falls back to the original, symmetric
+ * "between the "A" and "B" <noun>" phrasing when neither group (or both) has
+ * a role - identical to this function's behavior before Milestone 15.
+ */
+function describeComparisonGroups(
+  design: ExperimentDesign,
+  labelA: string | undefined,
+  labelB: string | undefined,
+  noun: string,
+): string {
+  const roleA = roleForGroup(design, labelA)
+  const roleB = roleForGroup(design, labelB)
+  if (roleA && !roleB) {
+    return `between "${labelB}" and the ${GROUP_ROLE_NOUN[roleA]} ("${labelA}")`
+  }
+  if (roleB && !roleA) {
+    return `between "${labelA}" and the ${GROUP_ROLE_NOUN[roleB]} ("${labelB}")`
+  }
+  return `between the "${labelA}" and "${labelB}" ${noun}`
+}
+
+/**
+ * A short parenthetical noting when one of a pairwise comparison's two
+ * groups is a designated control, e.g. ` (compared with the negative
+ * control)`. Empty string when neither/both groups have a role - the ANOVA
+ * pairwise-comparison text this feeds is otherwise unchanged.
+ */
+function describeControlNote(
+  design: ExperimentDesign,
+  labelA: string | undefined,
+  labelB: string | undefined,
+): string {
+  const roleA = roleForGroup(design, labelA)
+  const roleB = roleForGroup(design, labelB)
+  if (roleA && !roleB) return ` (compared with the designated ${GROUP_ROLE_NOUN[roleA]})`
+  if (roleB && !roleA) return ` (compared with the designated ${GROUP_ROLE_NOUN[roleB]})`
+  return ''
+}
 
 export interface GenerateInterpretationTextInput {
   design: ExperimentDesign
@@ -100,8 +159,9 @@ function generateAnovaInterpretationText(
   )
 
   for (const pair of pairwiseComparisons) {
+    const controlNote = describeControlNote(design, pair.groupALabel, pair.groupBLabel)
     sentences.push(
-      `"${pair.groupALabel}" vs "${pair.groupBLabel}": estimated difference ` +
+      `"${pair.groupALabel}" vs "${pair.groupBLabel}"${controlNote}: estimated difference ` +
         `${formatStatistic(pair.meanDifference)}${unit}, adjusted ${formatPValue(pair.pValueAdjusted)}.`,
     )
   }
@@ -137,10 +197,12 @@ export function generateInterpretationText(
   const testName = TEST_DISPLAY_NAME[analysis.analysisType]
   const pValueText = formatPValue(analysis.result.pValue)
 
-  const comparisonPhrase =
-    analysis.analysisType === 'welch-two-sample-t-test'
-      ? `between the "${groupALabel}" and "${groupBLabel}" groups`
-      : `between the "${groupALabel}" and "${groupBLabel}" conditions`
+  const comparisonPhrase = describeComparisonGroups(
+    design,
+    groupALabel,
+    groupBLabel,
+    analysis.analysisType === 'welch-two-sample-t-test' ? 'groups' : 'conditions',
+  )
 
   const meanDifference = analysis.result.meanDifference
   const ciLow = analysis.result.meanDifferenceCi95Low

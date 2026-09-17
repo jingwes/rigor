@@ -56,6 +56,19 @@ describe('applyMigrations - real historical migration: schema version 1 -> 2', (
   })
 })
 
+describe('groups.roles (Milestone 15) did not require a schema-version bump', () => {
+  it('PROJECT_FILE_SCHEMA_VERSION is still 2: adding groups.roles was additive/optional, unlike Milestone 11\'s required analysisHistory field', () => {
+    expect(PROJECT_FILE_SCHEMA_VERSION).toBe(2)
+  })
+
+  it('an old (pre-Milestone-15, and even pre-Milestone-11) project with no groups.roles migrates and validates cleanly, exactly as before', () => {
+    const migrated = applyMigrations(v1Project() as unknown as Record<string, unknown>, 1)
+    expect(() => validateRigorProjectLatestShape(migrated)).not.toThrow()
+    const validated = validateRigorProjectLatestShape(migrated)
+    expect(validated.experimentDesign.groups.roles).toBeUndefined()
+  })
+})
+
 describe('applyMigrations - mechanism correctness (registry + version-gap handling)', () => {
   it('throws a clear, specific error for a project claiming a NEWER schema version than this build understands', () => {
     const future = { schemaVersion: PROJECT_FILE_SCHEMA_VERSION + 1 }

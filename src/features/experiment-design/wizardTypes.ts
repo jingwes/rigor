@@ -1,4 +1,4 @@
-import type { OutcomeType, StudyRelationship } from '../../models/ExperimentDesign'
+import type { GroupRole, OutcomeType, StudyRelationship } from '../../models/ExperimentDesign'
 
 /**
  * The wizard's working draft.
@@ -25,6 +25,15 @@ export interface WizardDraft {
   groupCountChoice: GroupCountChoice | undefined
   groupsCount: number | undefined
   groupNames: string[]
+  /**
+   * Optional per-group control/reference designation, indexed the same way
+   * as `groupNames` (index `i` is that group's role, or `undefined` for "no
+   * particular role" - the default for most designs). Optional on the type
+   * (not just an empty array) so existing code/tests that construct a
+   * `WizardDraft` literal without it keep compiling - identical treatment to
+   * `methodDescription` above, for the same reason.
+   */
+  groupRoles?: (GroupRole | undefined)[]
 
   // Step 3: independence and pairing
   relationship: StudyRelationship | undefined
@@ -50,6 +59,19 @@ export interface WizardDraft {
   methodDescription?: string
 }
 
+/**
+ * The options offered for a group's optional control/reference designation,
+ * in display order. `value: undefined` is "no particular role" - the
+ * default, and by far the most common choice, since most designs don't need
+ * one.
+ */
+export const GROUP_ROLE_OPTIONS: { value: GroupRole | undefined; label: string }[] = [
+  { value: undefined, label: 'No particular role' },
+  { value: 'control', label: 'Control (reference)' },
+  { value: 'positive-control', label: 'Positive control' },
+  { value: 'negative-control', label: 'Negative control' },
+]
+
 export const EXPERIMENTAL_UNIT_PRESETS = [
   'Participant',
   'Animal',
@@ -74,6 +96,7 @@ export function createInitialDraft(): WizardDraft {
     groupCountChoice: undefined,
     groupsCount: undefined,
     groupNames: [],
+    groupRoles: [],
 
     relationship: undefined,
 

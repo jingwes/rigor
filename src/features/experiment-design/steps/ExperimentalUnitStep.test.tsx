@@ -30,6 +30,16 @@ describe('ExperimentalUnitStep', () => {
     })
   })
 
+  it('clarifies what kind of detail the optional description field wants', () => {
+    render(<ExperimentalUnitStep draft={createInitialDraft()} onUpdate={vi.fn()} />)
+    expect(
+      screen.getByLabelText('Add more detail about your experimental unit (optional)'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByPlaceholderText(/which mouse strain, which cell line, which plant variety/i),
+    ).toBeInTheDocument()
+  })
+
   it('only asks for a measurements-per-unit count after answering yes', () => {
     const draft = createInitialDraft()
     const { rerender } = render(<ExperimentalUnitStep draft={draft} onUpdate={vi.fn()} />)

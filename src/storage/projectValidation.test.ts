@@ -67,6 +67,46 @@ describe('validateRigorProjectLatestShape - accepts well-formed input', () => {
     delete project.analysis
     expect(() => validateRigorProjectLatestShape(project)).not.toThrow()
   })
+
+  it('accepts a project with no groups.roles at all (every project before Milestone 15, and most after)', () => {
+    const project = wellFormedProject()
+    expect(project.experimentDesign.groups.roles).toBeUndefined()
+    expect(() => validateRigorProjectLatestShape(project)).not.toThrow()
+  })
+
+  it('accepts a project with a valid groups.roles designation', () => {
+    const project = wellFormedProject()
+    project.experimentDesign.groups.roles = { Control: 'control' }
+    expect(validateRigorProjectLatestShape(project)).toEqual(project)
+  })
+})
+
+describe('validateRigorProjectLatestShape - groups.roles (Milestone 15)', () => {
+  it('rejects a non-object groups.roles, naming the field', () => {
+    const project = wellFormedProject()
+    const bad = {
+      ...project,
+      experimentDesign: {
+        ...project.experimentDesign,
+        groups: { ...project.experimentDesign.groups, roles: 'control' },
+      },
+    }
+    expect(() => validateRigorProjectLatestShape(bad)).toThrow(/experimentDesign\.groups\.roles/)
+  })
+
+  it('rejects an unrecognized role value, naming the group', () => {
+    const project = wellFormedProject()
+    const bad = {
+      ...project,
+      experimentDesign: {
+        ...project.experimentDesign,
+        groups: { ...project.experimentDesign.groups, roles: { Control: 'main-character' } },
+      },
+    }
+    expect(() => validateRigorProjectLatestShape(bad)).toThrow(
+      /experimentDesign\.groups\.roles\.Control/,
+    )
+  })
 })
 
 describe('validateRigorProjectLatestShape - rejects malformed input with a specific error', () => {

@@ -93,6 +93,33 @@ describe('SummaryStep', () => {
     expect(screen.getByText(/Control, Fertilizer X/)).toBeInTheDocument()
   })
 
+  it('annotates a designated control group in the plain-language summary (Milestone 15)', () => {
+    const draft = {
+      ...createInitialDraft(),
+      outcomeName: 'plant height',
+      outcomeType: 'continuous' as const,
+      groupCountChoice: 'two' as const,
+      groupsCount: 2,
+      groupNames: ['Vehicle', 'Fertilizer X'],
+      groupRoles: ['negative-control' as const, undefined],
+      relationship: 'independent' as const,
+      experimentalUnitLabel: 'Plant',
+      technicalReplicationPresent: false,
+      exclusionsPredefined: true,
+    }
+    render(
+      <SummaryStep
+        draft={draft}
+        onEditStep={vi.fn()}
+        onRestart={vi.fn()}
+        onExit={vi.fn()}
+        onEnterData={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/Vehicle \(negative control\), Fertilizer X/)).toBeInTheDocument()
+  })
+
   it('offers a working "Enter your data" action that hands over the captured design', () => {
     const onEnterData = vi.fn()
     const draft = {

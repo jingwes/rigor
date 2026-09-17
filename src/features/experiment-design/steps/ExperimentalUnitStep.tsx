@@ -40,14 +40,19 @@ export function ExperimentalUnitStep({ draft, onUpdate }: ExperimentalUnitStepPr
       )}
 
       <div className="field">
-        <label htmlFor="experimental-unit-description">More detail (optional)</label>
+        <label htmlFor="experimental-unit-description">
+          Add more detail about your experimental unit (optional)
+        </label>
         <input
           id="experimental-unit-description"
           type="text"
           value={draft.experimentalUnitDescription}
           onChange={(e) => onUpdate({ experimentalUnitDescription: e.target.value })}
-          placeholder="e.g. 8-week-old zebrafish from the same clutch"
+          placeholder="e.g. which mouse strain, which cell line, which plant variety"
         />
+        <p className="field-hint">
+          For example: 8-week-old zebrafish from the same clutch, C57BL/6 mice, or HeLa cells.
+        </p>
       </div>
 
       <fieldset>

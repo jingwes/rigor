@@ -49,6 +49,50 @@ describe('toExperimentDesign', () => {
     expect(design.groups.names).toEqual(['Control', 'Group 2'])
   })
 
+  it('leaves groups.roles undefined when no group has a designation (the default)', () => {
+    const design = toExperimentDesign({
+      ...createInitialDraft(),
+      groupsCount: 2,
+      groupNames: ['Control', 'Treatment'],
+    })
+    expect(design.groups.roles).toBeUndefined()
+  })
+
+  it('records a control designation, keyed by the resolved group name', () => {
+    const design = toExperimentDesign({
+      ...createInitialDraft(),
+      groupsCount: 2,
+      groupNames: ['Vehicle', 'Drug A'],
+      groupRoles: ['negative-control', undefined],
+    })
+    expect(design.groups.roles).toEqual({ Vehicle: 'negative-control' })
+  })
+
+  it('keys a control designation by the auto-generated placeholder name when a group was left unnamed', () => {
+    const design = toExperimentDesign({
+      ...createInitialDraft(),
+      groupsCount: 2,
+      groupNames: ['', 'Treatment'],
+      groupRoles: ['control', undefined],
+    })
+    expect(design.groups.names).toEqual(['Group 1', 'Treatment'])
+    expect(design.groups.roles).toEqual({ 'Group 1': 'control' })
+  })
+
+  it('supports multiple simultaneous designations (e.g. one positive and one negative control)', () => {
+    const design = toExperimentDesign({
+      ...createInitialDraft(),
+      groupCountChoice: 'threeOrMore',
+      groupsCount: 3,
+      groupNames: ['Vehicle', 'Known agonist', 'Drug A'],
+      groupRoles: ['negative-control', 'positive-control', undefined],
+    })
+    expect(design.groups.roles).toEqual({
+      Vehicle: 'negative-control',
+      'Known agonist': 'positive-control',
+    })
+  })
+
   it('resolves "Other" experimental unit to the free-text answer', () => {
     const design = toExperimentDesign({
       ...createInitialDraft(),

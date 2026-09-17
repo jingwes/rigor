@@ -11,7 +11,7 @@
  * unless it was passed in from real data.
  */
 
-import type { ExperimentDesign } from '../../models/ExperimentDesign'
+import type { ExperimentDesign, GroupRole } from '../../models/ExperimentDesign'
 import type {
   ChiSquareTestResult,
   FishersExactTestResult,
@@ -109,6 +109,33 @@ const CATEGORICAL_TEST_DISPLAY_NAME: Record<
   'fishers-exact': "Fisher's exact test",
 }
 
+/**
+ * Milestone 15: plain-language noun for the optional per-group control/
+ * reference designation, used only to append a parenthetical note to that
+ * group's mention in the methods paragraph (e.g. `"Vehicle" (n = 6
+ * replicates, the designated negative control)`) - purely descriptive, never
+ * a factor in which test or values are reported.
+ */
+const GROUP_ROLE_NOUN: Record<GroupRole, string> = {
+  control: 'control (reference) group',
+  'positive-control': 'positive control group',
+  'negative-control': 'negative control group',
+}
+
+/** For insertion inside an existing "(n = ...)" parenthetical, e.g. "(n = 6 replicates, the designated negative control group)". */
+function roleParenthetical(design: ExperimentDesign, groupName: string | undefined): string {
+  if (!groupName) return ''
+  const role = design.groups.roles?.[groupName]
+  return role ? `, the designated ${GROUP_ROLE_NOUN[role]}` : ''
+}
+
+/** A standalone parenthetical for when a group's mention has no existing "(n = ...)" to append to. */
+function roleAside(design: ExperimentDesign, groupName: string | undefined): string {
+  if (!groupName) return ''
+  const role = design.groups.roles?.[groupName]
+  return role ? ` (the designated ${GROUP_ROLE_NOUN[role]})` : ''
+}
+
 function capitalize(text: string): string {
   if (text.length === 0) return text
   return text[0].toUpperCase() + text.slice(1)
@@ -176,10 +203,10 @@ export function generateMethodsText(input: GenerateMethodsTextInput): string {
     const { nA, nB } = analysis.result
     sentences.push(
       `${outcomeSentence} was compared between two independent groups, "${groupALabel}" ` +
-        `(n = ${nA} ${pluralize(nA, unitLabel)}) and "${groupBLabel}" (n = ${nB} ` +
-        `${pluralize(nB, unitLabel)}), using a ${testName}. Welch's test was used rather than ` +
-        "the classic Student's t-test because it does not assume the two groups have equal " +
-        'variances.',
+        `(n = ${nA} ${pluralize(nA, unitLabel)}${roleParenthetical(design, groupALabel)}) and ` +
+        `"${groupBLabel}" (n = ${nB} ${pluralize(nB, unitLabel)}${roleParenthetical(design, groupBLabel)}), ` +
+        `using a ${testName}. Welch's test was used rather than the classic Student's t-test ` +
+        'because it does not assume the two groups have equal variances.',
     )
     if (aggregation) {
       sentences.push(describeAggregationForMethods(aggregation, unitLabel))
@@ -187,14 +214,18 @@ export function generateMethodsText(input: GenerateMethodsTextInput): string {
   } else if (analysis.analysisType === 'paired-t-test') {
     const { nPairs } = analysis.result
     sentences.push(
-      `${outcomeSentence} was compared between two paired conditions, "${groupALabel}" and ` +
-        `"${groupBLabel}", using a ${testName}, on ${nPairs} matched ` +
-        `${pluralize(nPairs, unitLabel)} measured under both conditions.`,
+      `${outcomeSentence} was compared between two paired conditions, "${groupALabel}"` +
+        `${roleAside(design, groupALabel)} and "${groupBLabel}"${roleAside(design, groupBLabel)}, ` +
+        `using a ${testName}, on ${nPairs} matched ${pluralize(nPairs, unitLabel)} measured under ` +
+        'both conditions.',
     )
   } else if (analysis.analysisType === 'one-way-anova') {
     const { groups, pairwiseComparisons } = analysis.result
     const groupDescriptions = groups
-      .map((g) => `"${g.label}" (n = ${g.n} ${pluralize(g.n, unitLabel)})`)
+      .map(
+        (g) =>
+          `"${g.label}" (n = ${g.n} ${pluralize(g.n, unitLabel)}${roleParenthetical(design, g.label)})`,
+      )
       .join(', ')
     sentences.push(
       `${outcomeSentence} was compared across ${groups.length} independent groups, ` +

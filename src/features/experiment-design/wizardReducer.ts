@@ -1,6 +1,6 @@
 import type { WizardDraft, WizardStepId } from './wizardTypes'
 import { createInitialDraft } from './wizardTypes'
-import { getNextStepId, getPreviousStepId, resizeGroupNames } from './wizardLogic'
+import { getNextStepId, getPreviousStepId, resizeGroupNames, resizeGroupRoles } from './wizardLogic'
 import { appendAuditEntry, type AuditEntry } from '../../models/AuditEntry'
 
 export interface WizardState {
@@ -47,6 +47,7 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
           groupCountChoice: action.choice,
           groupsCount: count,
           groupNames: resizeGroupNames(state.draft.groupNames, count ?? 0),
+          groupRoles: resizeGroupRoles(state.draft.groupRoles ?? [], count ?? 0),
           // Changing the group count can make the relationship question
           // inapplicable (1 group) or change its meaning (2 vs 3+) - clear
           // any previous answer rather than carrying a stale one forward.

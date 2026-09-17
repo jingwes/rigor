@@ -154,6 +154,56 @@ describe('generateInterpretationText', () => {
   })
 })
 
+describe('generateInterpretationText - control/reference group designation (Milestone 15)', () => {
+  it('phrases a two-group comparison relative to the designated control when one is set', () => {
+    const withControl: ExperimentDesign = {
+      ...design(),
+      groups: { count: 2, names: ['Control', 'Treatment'], roles: { Control: 'control' } },
+    }
+    const text = generateInterpretationText({
+      design: withControl,
+      analysis: { analysisType: 'welch-two-sample-t-test', result },
+      groupALabel: 'Control',
+      groupBLabel: 'Treatment',
+    })
+    expect(text).toContain('the control (reference) group ("Control")')
+    expect(text).toContain('"Treatment"')
+  })
+
+  it('leaves the comparison phrasing exactly as before when no group is designated (default)', () => {
+    const withRole = generateInterpretationText({
+      design: design(),
+      analysis: { analysisType: 'welch-two-sample-t-test', result },
+      groupALabel: 'Control',
+      groupBLabel: 'Treatment',
+    })
+    expect(withRole).toContain('between the "Control" and "Treatment" groups')
+  })
+
+  it('annotates the ANOVA pairwise comparison that involves a designated control', () => {
+    const withControl: ExperimentDesign = {
+      outcome: { name: 'cell viability', type: 'continuous', unit: '%' },
+      groups: {
+        count: 3,
+        names: ['Control', 'Low dose', 'High dose'],
+        roles: { Control: 'control' },
+      },
+      relationship: 'independent',
+      experimentalUnit: { label: 'replicate' },
+      technicalReplication: { present: false },
+      repeatedMeasures: { present: false },
+      exclusionsPredefined: false,
+    }
+    const text = generateInterpretationText({
+      design: withControl,
+      analysis: { analysisType: 'one-way-anova', result: anovaResult },
+    })
+    expect(text).toContain('"Control" vs "Low dose" (compared with the designated control (reference) group)')
+    // The pair that doesn't involve the designated control is unannotated.
+    expect(text).toContain('"Low dose" vs "High dose": estimated difference')
+  })
+})
+
 describe('generateInterpretationText - one-way ANOVA (Milestone 8)', () => {
   function anovaDesign(): ExperimentDesign {
     return {

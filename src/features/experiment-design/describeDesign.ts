@@ -17,8 +17,25 @@ const OUTCOME_TYPE_LABELS: Record<ExperimentDesign['outcome']['type'], string> =
   unknown: "Not specified - you weren't sure",
 }
 
+const GROUP_ROLE_LABELS: Record<NonNullable<ExperimentDesign['groups']['roles']>[string], string> = {
+  control: 'control (reference)',
+  'positive-control': 'positive control',
+  'negative-control': 'negative control',
+}
+
+/**
+ * Milestone 15: annotates a group's name with its optional control/reference
+ * designation, e.g. `Vehicle (negative control)`. Groups with no designation
+ * (the default, and the only case before this milestone) are rendered
+ * exactly as before - this is purely additive.
+ */
+function describeGroupName(name: string, groups: ExperimentDesign['groups']): string {
+  const role = groups.roles?.[name]
+  return role ? `${name} (${GROUP_ROLE_LABELS[role]})` : name
+}
+
 function describeGroups(groups: ExperimentDesign['groups']): string {
-  const namedList = groups.names.join(', ')
+  const namedList = groups.names.map((name) => describeGroupName(name, groups)).join(', ')
   return groups.count === 1
     ? `One group (${namedList}).`
     : `${groups.count} groups: ${namedList}.`

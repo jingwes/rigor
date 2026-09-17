@@ -1,4 +1,4 @@
-import type { ExperimentDesign } from '../../models/ExperimentDesign'
+import type { ExperimentDesign, GroupRole } from '../../models/ExperimentDesign'
 import type { WizardDraft } from './wizardTypes'
 
 function trimmedOrUndefined(value: string): string | undefined {
@@ -18,6 +18,27 @@ function resolveGroupNames(draft: WizardDraft): string[] {
   const names = draft.groupNames.slice(0, count)
   while (names.length < count) names.push('')
   return names.map((name, index) => (name.trim().length > 0 ? name.trim() : `Group ${index + 1}`))
+}
+
+/**
+ * Builds the optional `groups.roles` record from the draft's per-index role
+ * picks, keyed by the SAME resolved group names `resolveGroupNames` produces
+ * (so a role always lines up with the name actually recorded on the design,
+ * including auto-generated "Group N" placeholders). Returns `undefined`
+ * (not `{}`) when no group has a role, so a design with none looks exactly
+ * like it did before this field existed.
+ */
+function resolveGroupRoles(
+  draft: WizardDraft,
+  resolvedNames: string[],
+): Record<string, GroupRole> | undefined {
+  const roles = draft.groupRoles ?? []
+  const result: Record<string, GroupRole> = {}
+  resolvedNames.forEach((name, index) => {
+    const role = roles[index]
+    if (role) result[name] = role
+  })
+  return Object.keys(result).length > 0 ? result : undefined
 }
 
 function parseMeasurementsPerUnit(draft: WizardDraft): number | undefined {
@@ -40,6 +61,8 @@ export function toExperimentDesign(draft: WizardDraft): ExperimentDesign {
   const groupsCount = draft.groupsCount ?? 1
   const relationship = groupsCount >= 2 ? (draft.relationship ?? 'unknown') : 'unknown'
   const repeatedMeasuresPresent = relationship === 'paired' || relationship === 'repeated'
+  const groupNames = resolveGroupNames(draft)
+  const groupRoles = resolveGroupRoles(draft, groupNames)
 
   return {
     researchQuestion: trimmedOrUndefined(draft.researchQuestion),
@@ -50,7 +73,8 @@ export function toExperimentDesign(draft: WizardDraft): ExperimentDesign {
     },
     groups: {
       count: groupsCount,
-      names: resolveGroupNames(draft),
+      names: groupNames,
+      ...(groupRoles ? { roles: groupRoles } : {}),
     },
     relationship,
     experimentalUnit: {

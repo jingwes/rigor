@@ -22,6 +22,7 @@
  */
 import type {
   ExperimentDesign,
+  GroupRole,
   OutcomeType,
   StudyRelationship,
 } from '../models/ExperimentDesign'
@@ -125,6 +126,7 @@ const RELATIONSHIPS: readonly StudyRelationship[] = [
   'unknown',
 ]
 const DATASET_FORMATS: readonly DatasetFormat[] = ['independent-groups', 'paired', 'nested']
+const GROUP_ROLES: readonly GroupRole[] = ['control', 'positive-control', 'negative-control']
 const ISSUE_SEVERITIES: readonly IssueSeverity[] = ['excluded', 'warning']
 const AUDIT_ACTIONS: readonly AuditAction[] = [
   'plan-locked',
@@ -151,6 +153,17 @@ function validateExperimentDesign(value: unknown, path: string): ExperimentDesig
   expectArray(groups.names, `${path}.groups.names`).forEach((name, i) =>
     expectString(name, `${path}.groups.names[${i}]`),
   )
+  // Optional, additive (Milestone 15): a purely cosmetic control/reference
+  // tag per named group. Absent entirely on any project saved before this
+  // milestone, and absent on most projects going forward too - only
+  // validated when present, so no schema-version migration is needed (see
+  // `src/storage/migrations.ts` for when one actually is).
+  if (groups.roles !== undefined) {
+    const roles = expectObject(groups.roles, `${path}.groups.roles`)
+    for (const [groupName, role] of Object.entries(roles)) {
+      expectOneOf(role, GROUP_ROLES, `${path}.groups.roles.${groupName}`)
+    }
+  }
 
   expectOneOf(v.relationship, RELATIONSHIPS, `${path}.relationship`)
 

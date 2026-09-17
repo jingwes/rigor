@@ -222,6 +222,49 @@ describe('generateMethodsText', () => {
   })
 })
 
+describe('generateMethodsText - control/reference group designation (Milestone 15)', () => {
+  it('notes the designated control group for a two-group Welch test', () => {
+    const text = generateMethodsText({
+      design: design({
+        groups: { count: 2, names: ['Vehicle', 'Drug A'], roles: { Vehicle: 'negative-control' } },
+      }),
+      analysis: { analysisType: 'welch-two-sample-t-test', result: welchResult },
+      groupALabel: 'Vehicle',
+      groupBLabel: 'Drug A',
+      excludedObservationCount: 0,
+    })
+    expect(text).toContain('the designated negative control group')
+  })
+
+  it('leaves the two-group methods text unchanged when no group is designated (default)', () => {
+    const text = generateMethodsText({
+      design: design(),
+      analysis: { analysisType: 'welch-two-sample-t-test', result: welchResult },
+      groupALabel: 'Control',
+      groupBLabel: 'Treatment',
+      excludedObservationCount: 0,
+    })
+    expect(text).not.toMatch(/designated/i)
+  })
+
+  it('notes the designated control group for a one-way ANOVA', () => {
+    const text = generateMethodsText({
+      design: design({
+        groups: {
+          count: 3,
+          names: ['Control', 'Low dose', 'High dose'],
+          roles: { Control: 'control' },
+        },
+      }),
+      analysis: { analysisType: 'one-way-anova', result: anovaResult },
+      excludedObservationCount: 0,
+    })
+    expect(text).toContain(
+      '"Control" (n = 10 independent biological replicates, the designated control (reference) group)',
+    )
+  })
+})
+
 describe('generateMethodsText - one-way ANOVA (Milestone 8)', () => {
   function anovaDesign(): ExperimentDesign {
     return design({ groups: { count: 3, names: ['Control', 'Low dose', 'High dose'] } })

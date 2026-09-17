@@ -1,3 +1,4 @@
+import type { GroupRole } from '../../models/ExperimentDesign'
 import type { WizardDraft, WizardStepId } from './wizardTypes'
 import { WIZARD_STEP_IDS } from './wizardTypes'
 
@@ -73,4 +74,19 @@ export function resizeGroupNames(names: string[], count: number): string[] {
   if (names.length === safeCount) return names
   if (names.length > safeCount) return names.slice(0, safeCount)
   return [...names, ...Array(safeCount - names.length).fill('')]
+}
+
+/**
+ * Same idea as `resizeGroupNames`, for the optional per-group role
+ * designation: preserve roles already chosen (by index), pad with
+ * `undefined` ("no particular role") - never guess a role for a new slot.
+ */
+export function resizeGroupRoles(
+  roles: (GroupRole | undefined)[],
+  count: number,
+): (GroupRole | undefined)[] {
+  const safeCount = Math.max(0, count)
+  if (roles.length === safeCount) return roles
+  if (roles.length > safeCount) return roles.slice(0, safeCount)
+  return [...roles, ...Array(safeCount - roles.length).fill(undefined)]
 }

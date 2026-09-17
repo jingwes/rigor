@@ -395,3 +395,55 @@ describe('recommendAnalysis: exhaustive matrix invariants', () => {
     expect(new Set(expectedRuleIds)).toEqual(seenRuleIds)
   })
 })
+
+describe('recommendAnalysis: group control/reference designation is never a decision input (Milestone 15)', () => {
+  it('produces an identical recommendation for a 2-group design whether or not a group is marked as a control', () => {
+    const withoutRole = buildDesign({
+      outcomeType: 'continuous',
+      groupsCount: 2,
+      relationship: 'independent',
+    })
+    withoutRole.groups.names = ['Vehicle', 'Drug A']
+
+    const withRole: ExperimentDesign = {
+      ...withoutRole,
+      groups: { ...withoutRole.groups, roles: { Vehicle: 'negative-control' } },
+    }
+
+    expect(recommendAnalysis(withRole)).toEqual(recommendAnalysis(withoutRole))
+  })
+
+  it('produces an identical recommendation for a 3+-group design regardless of which (if any) group is a control', () => {
+    const base = buildDesign({
+      outcomeType: 'continuous',
+      groupsCount: 3,
+      relationship: 'independent',
+    })
+    base.groups.names = ['Control', 'Low dose', 'High dose']
+
+    const noRoles = recommendAnalysis(base)
+    const controlTagged = recommendAnalysis({
+      ...base,
+      groups: { ...base.groups, roles: { Control: 'control' } },
+    })
+    const positiveControlTagged = recommendAnalysis({
+      ...base,
+      groups: { ...base.groups, roles: { 'High dose': 'positive-control' } },
+    })
+    const everyoneTagged = recommendAnalysis({
+      ...base,
+      groups: {
+        ...base.groups,
+        roles: {
+          Control: 'control',
+          'Low dose': 'negative-control',
+          'High dose': 'positive-control',
+        },
+      },
+    })
+
+    expect(controlTagged).toEqual(noRoles)
+    expect(positiveControlTagged).toEqual(noRoles)
+    expect(everyoneTagged).toEqual(noRoles)
+  })
+})
