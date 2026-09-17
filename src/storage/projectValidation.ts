@@ -132,6 +132,7 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   'design-modified',
   'exclusion-changed',
   'data-modified',
+  'method-description-override',
 ]
 const TWO_GROUP_ANALYSIS_TYPES = ['welch-two-sample-t-test', 'paired-t-test'] as const
 const INTERVAL_TYPES: readonly IntervalType[] = ['sd', 'sem', 'ci95']
@@ -183,6 +184,9 @@ function validateExperimentDesign(value: unknown, path: string): ExperimentDesig
   if (v.primaryComparison !== undefined) expectString(v.primaryComparison, `${path}.primaryComparison`)
   expectBoolean(v.exclusionsPredefined, `${path}.exclusionsPredefined`)
   if (v.notes !== undefined) expectString(v.notes, `${path}.notes`)
+  if (v.methodDescription !== undefined) {
+    expectString(v.methodDescription, `${path}.methodDescription`)
+  }
 
   return value as ExperimentDesign
 }

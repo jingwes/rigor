@@ -108,8 +108,17 @@ export function reachResults(
   return { ...state, history, viewedSinceLock: true }
 }
 
-export function resetAnalysisPlanAudit(): AnalysisPlanAuditState {
-  return initialAnalysisPlanAuditState
+/**
+ * Starts a brand-new, empty analysis session. `seedHistory` (default: none)
+ * lets a caller carry forward audit entries that honestly belong to this new
+ * session despite predating it - currently only Milestone 14's
+ * `'method-description-override'` entries recorded during the wizard, for
+ * the exact design this session is starting with. This is still a genuine
+ * reset (no `lockedFields`, not viewed) - `seedHistory` only affects the
+ * starting `history`, never the locked/viewed state.
+ */
+export function resetAnalysisPlanAudit(seedHistory: AuditEntry[] = []): AnalysisPlanAuditState {
+  return { ...initialAnalysisPlanAuditState, history: seedHistory }
 }
 
 /**

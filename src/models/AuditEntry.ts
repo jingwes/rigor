@@ -37,6 +37,16 @@ export type AuditAction =
    * yet either.
    */
   | 'data-modified'
+  /**
+   * Milestone 14: the deterministic method-description cross-checker
+   * (`src/rules/methodDescriptionChecker.ts`) can flag a possible mismatch
+   * between the student's free-text description and their selected design.
+   * That check never overrides the student's answer - it only ever offers
+   * "Review design" or "My selection is correct". Choosing the latter
+   * records one of these entries, so the dismissal is an honest, visible
+   * part of the reproducibility trail rather than silently discarded.
+   */
+  | 'method-description-override'
 
 export interface AuditEntry {
   id: string

@@ -324,6 +324,30 @@ td {
   margin-bottom: 14px;
 }
 
+/* Milestone 14: method-description cross-checker (src/features/experiment-design/MethodDescriptionCheck.tsx). */
+
+.method-description-check {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--accent);
+}
+
+.method-description-ok {
+  color: #1b7f4c;
+}
+
+.method-description-alert {
+  border: 1px solid #a16207;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.method-description-explanation {
+  font-style: italic;
+  opacity: 0.9;
+}
+
 .chart-customization-panel .field {
   margin-bottom: 14px;
 }

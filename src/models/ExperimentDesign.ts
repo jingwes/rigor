@@ -51,4 +51,12 @@ export interface ExperimentDesign {
   primaryComparison?: string
   exclusionsPredefined: boolean
   notes?: string
+  /**
+   * Milestone 14: an optional, free-text "describe your experiment in your
+   * own words" field, used only by the deterministic method-description
+   * cross-checker (`src/rules/methodDescriptionChecker.ts`) as an extra,
+   * student-initiated safety net. Never required, never auto-filled, and
+   * never read by anything that changes another field on this design.
+   */
+  methodDescription?: string
 }

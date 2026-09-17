@@ -21,8 +21,12 @@ export interface UseAnalysisPlanAudit {
    * Never blocks rendering - only decides what (if anything) to log.
    */
   markResultsReached: (design: ExperimentDesign) => void
-  /** Starts a brand-new, empty audit trail (a new analysis session). */
-  reset: () => void
+  /**
+   * Starts a brand-new audit trail (a new analysis session). Optionally
+   * seeded with pre-existing entries (Milestone 14: overrides recorded
+   * during the wizard for this same design) so they aren't silently lost.
+   */
+  reset: (seedHistory?: AuditEntry[]) => void
   /**
    * Milestone 12: replaces the current state wholesale with one
    * reconstructed from a reopened project's stored `analysisHistory` (see
@@ -48,8 +52,8 @@ export function useAnalysisPlanAudit(): UseAnalysisPlanAudit {
     setState((prev) => reachResults(prev, design))
   }, [])
 
-  const reset = useCallback(() => {
-    setState(resetAnalysisPlanAudit())
+  const reset = useCallback((seedHistory: AuditEntry[] = []) => {
+    setState(resetAnalysisPlanAudit(seedHistory))
   }, [])
 
   const hydrate = useCallback((history: AuditEntry[], design: ExperimentDesign) => {

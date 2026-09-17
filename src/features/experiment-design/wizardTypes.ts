@@ -41,6 +41,13 @@ export interface WizardDraft {
   // Step 5: final questions
   exclusionsPredefined: boolean | undefined
   notes: string
+
+  // Step 6 (summary): Milestone 14's optional method-description cross-check
+  // field. Optional on the type (not just blank) so existing code/tests that
+  // construct a `WizardDraft` literal without it keep compiling - truly
+  // absent and "typed but blank" are treated identically here (both mean "no
+  // description given").
+  methodDescription?: string
 }
 
 export const EXPERIMENTAL_UNIT_PRESETS = [
@@ -78,6 +85,8 @@ export function createInitialDraft(): WizardDraft {
 
     exclusionsPredefined: undefined,
     notes: '',
+
+    methodDescription: '',
   }
 }
 

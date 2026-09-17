@@ -20,6 +20,7 @@ import { CorrelationFlow } from './features/correlation/CorrelationFlow'
 import { ReportView } from './features/report/ReportView'
 import type { Dataset } from './models/Dataset'
 import type { ExperimentDesign } from './models/ExperimentDesign'
+import type { AuditEntry } from './models/AuditEntry'
 import type { CorrelationDesign } from './models/CorrelationDesign'
 import type { ProjectAnalysisResult, RigorProject } from './models/ProjectFile'
 import {
@@ -175,11 +176,15 @@ function App() {
     setView('correlation-design')
   }
 
-  function enterData(design: ExperimentDesign) {
+  function enterData(design: ExperimentDesign, methodDescriptionAuditHistory: AuditEntry[] = []) {
     setActiveDesign(design)
     // A fresh design starts a brand-new analysis session - reset the
-    // locking/audit trail from any previous one.
-    analysisPlanAudit.reset()
+    // locking/audit trail from any previous one. Milestone 14: any
+    // `'method-description-override'` entries recorded while still in the
+    // wizard (for THIS design) are seeded back in here, rather than reset()
+    // silently discarding them - see `ExperimentDesignWizard`'s
+    // `methodDescriptionAuditHistory`.
+    analysisPlanAudit.reset(methodDescriptionAuditHistory)
     setView('data-import')
   }
 

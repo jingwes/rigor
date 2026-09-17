@@ -67,5 +67,6 @@ export function toExperimentDesign(draft: WizardDraft): ExperimentDesign {
     },
     exclusionsPredefined: draft.exclusionsPredefined ?? false,
     notes: trimmedOrUndefined(draft.notes),
+    methodDescription: trimmedOrUndefined(draft.methodDescription ?? ''),
   }
 }

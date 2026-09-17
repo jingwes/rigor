@@ -1,4 +1,5 @@
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
+import type { AuditEntry } from '../../models/AuditEntry'
 import { useWizard } from './useWizard'
 import { WizardStepShell } from './WizardStepShell'
 import { canProceedFromStep, getStepNumber, getTotalSteps } from './wizardLogic'
@@ -21,7 +22,13 @@ const STEP_TITLES: Record<WizardStepId, string> = {
 
 export interface ExperimentDesignWizardProps {
   onExit: () => void
-  onEnterData: (design: ExperimentDesign) => void
+  /**
+   * Milestone 14: also hands over any audit entries recorded during design
+   * (currently only `'method-description-override'` dismissals) so the
+   * analysis-session audit trail this design is about to start can be seeded
+   * with them instead of silently losing them - see `App.tsx`'s `enterData`.
+   */
+  onEnterData: (design: ExperimentDesign, methodDescriptionAuditHistory: AuditEntry[]) => void
 }
 
 export function ExperimentDesignWizard({
@@ -29,7 +36,7 @@ export function ExperimentDesignWizard({
   onEnterData,
 }: ExperimentDesignWizardProps) {
   const { state, dispatch } = useWizard()
-  const { step, draft } = state
+  const { step, draft, methodDescriptionAuditHistory } = state
 
   const onUpdate = (patch: Partial<typeof draft>) =>
     dispatch({ type: 'UPDATE_DRAFT', patch })
@@ -41,7 +48,9 @@ export function ExperimentDesignWizard({
         onEditStep={(target) => dispatch({ type: 'GO_TO_STEP', step: target })}
         onRestart={() => dispatch({ type: 'RESTART' })}
         onExit={onExit}
-        onEnterData={onEnterData}
+        onEnterData={(design) => onEnterData(design, methodDescriptionAuditHistory)}
+        onUpdateMethodDescription={(value) => onUpdate({ methodDescription: value })}
+        onRecordMethodDescriptionOverride={(entry) => dispatch({ type: 'APPEND_AUDIT_ENTRY', entry })}
       />
     )
   }

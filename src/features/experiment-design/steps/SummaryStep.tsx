@@ -1,8 +1,10 @@
 import type { ExperimentDesign } from '../../../models/ExperimentDesign'
+import type { AuditEntry } from '../../../models/AuditEntry'
 import { recommendAnalysis } from '../../../rules/analysisRules'
 import type { WizardDraft, WizardStepId } from '../wizardTypes'
 import { toExperimentDesign } from '../toExperimentDesign'
 import { describeDesign } from '../describeDesign'
+import { MethodDescriptionCheck } from '../MethodDescriptionCheck'
 
 export interface SummaryStepProps {
   draft: WizardDraft
@@ -10,6 +12,14 @@ export interface SummaryStepProps {
   onRestart: () => void
   onExit: () => void
   onEnterData: (design: ExperimentDesign) => void
+  /**
+   * Milestone 14: updates the draft's optional free-text method description,
+   * and records an audit entry when a cross-check alert is dismissed.
+   * Optional (default to no-ops) so this step still renders standalone (as
+   * existing tests already do) without wiring the full wizard-level plumbing.
+   */
+  onUpdateMethodDescription?: (value: string) => void
+  onRecordMethodDescriptionOverride?: (entry: AuditEntry) => void
 }
 
 /**
@@ -38,6 +48,8 @@ export function SummaryStep({
   onRestart,
   onExit,
   onEnterData,
+  onUpdateMethodDescription,
+  onRecordMethodDescriptionOverride,
 }: SummaryStepProps) {
   const design = toExperimentDesign(draft)
   const lines = describeDesign(design)
@@ -113,6 +125,14 @@ export function SummaryStep({
             'statistical results for this design without more information, or without support ' +
             "for it in this version. Rigor will check your data over regardless."}
       </p>
+
+      <MethodDescriptionCheck
+        description={draft.methodDescription ?? ''}
+        onChangeDescription={onUpdateMethodDescription ?? (() => {})}
+        design={design}
+        onReviewStep={onEditStep}
+        onRecordOverride={onRecordMethodDescriptionOverride ?? (() => {})}
+      />
 
       <div className="wizard-nav">
         <button

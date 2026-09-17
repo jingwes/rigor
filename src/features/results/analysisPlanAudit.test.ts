@@ -165,6 +165,26 @@ describe('resetAnalysisPlanAudit', () => {
   it('returns a fresh, empty state for starting a new analysis session', () => {
     expect(resetAnalysisPlanAudit()).toEqual(initialAnalysisPlanAuditState)
   })
+
+  it('Milestone 14: seeds the fresh history with pre-existing entries (e.g. wizard-time overrides) without treating the session as locked/viewed', () => {
+    const clock = clockAt(['2026-09-17T10:00:00.000Z'])
+    const seed = [
+      {
+        id: clock.nextId(),
+        timestamp: clock.now().toISOString(),
+        action: 'method-description-override' as const,
+        description: 'Reviewed a method-description cross-check flag and kept the original answer.',
+      },
+    ]
+    const state = resetAnalysisPlanAudit(seed)
+    expect(state.history).toEqual(seed)
+    expect(state.lockedFields).toBeUndefined()
+    expect(state.viewedSinceLock).toBe(false)
+  })
+
+  it('defaults to an empty seed history when none is given', () => {
+    expect(resetAnalysisPlanAudit(undefined).history).toEqual([])
+  })
 })
 
 describe('Milestone 12: hydrateAnalysisPlanAudit (reconstructing state from a reopened project)', () => {

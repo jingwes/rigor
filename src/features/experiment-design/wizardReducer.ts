@@ -1,14 +1,27 @@
 import type { WizardDraft, WizardStepId } from './wizardTypes'
 import { createInitialDraft } from './wizardTypes'
 import { getNextStepId, getPreviousStepId, resizeGroupNames } from './wizardLogic'
+import { appendAuditEntry, type AuditEntry } from '../../models/AuditEntry'
 
 export interface WizardState {
   step: WizardStepId
   draft: WizardDraft
+  /**
+   * Milestone 14: append-only audit trail (built with the same
+   * `AuditEntry`/`appendAuditEntry` model as Milestone 11's analysis-plan
+   * history) for events that happen DURING design, before there is an
+   * "analysis session" to attach them to - currently only
+   * `'method-description-override'` entries from the method-description
+   * cross-checker. Scoped to the wizard on purpose: it resets whenever the
+   * wizard itself resets/remounts (a genuinely new design), and is handed to
+   * `onEnterData` so it seeds the real analysis-plan audit trail rather than
+   * being silently dropped.
+   */
+  methodDescriptionAuditHistory: AuditEntry[]
 }
 
 export function createInitialWizardState(): WizardState {
-  return { step: 'researchQuestion', draft: createInitialDraft() }
+  return { step: 'researchQuestion', draft: createInitialDraft(), methodDescriptionAuditHistory: [] }
 }
 
 export type WizardAction =
@@ -18,6 +31,7 @@ export type WizardAction =
   | { type: 'GO_BACK' }
   | { type: 'GO_TO_STEP'; step: WizardStepId }
   | { type: 'RESTART' }
+  | { type: 'APPEND_AUDIT_ENTRY'; entry: AuditEntry }
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
@@ -56,6 +70,12 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
 
     case 'RESTART':
       return createInitialWizardState()
+
+    case 'APPEND_AUDIT_ENTRY':
+      return {
+        ...state,
+        methodDescriptionAuditHistory: appendAuditEntry(state.methodDescriptionAuditHistory, action.entry),
+      }
 
     default:
       return state
