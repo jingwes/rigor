@@ -2,18 +2,27 @@
  * Milestone 6: the typed shape of a downloadable Rigor project file
  * (`project.rigor.json`).
  *
- * This is download-only for now - reopening a saved project is Milestone
- * 12's job (not built here). `schemaVersion` is bumped whenever this shape
- * changes, so a future "open project" feature can tell which shape it's
- * reading. Only fields for features that actually exist at this milestone
- * are included - there is still no user-driven exclusion feature beyond
- * automatic parsing issues (Milestone 9's scope).
+ * Milestone 12 note: reopening a saved project (and autosaving one to
+ * IndexedDB) is now built - see `src/storage/`. `schemaVersion` is bumped
+ * whenever this shape changes, so the reopen path knows which shape it's
+ * reading and can migrate an older one forward (`src/storage/migrations.ts`)
+ * rather than silently rejecting it. Only fields for features that actually
+ * exist at this milestone are included - there is still no user-driven
+ * exclusion feature beyond automatic parsing issues (Milestone 9's scope).
  *
  * Milestone 11 additive extension: `analysisHistory` carries the full
  * append-only analysis-plan-lock/audit trail (see `AuditEntry.ts`), so the
  * downloaded project file is an honest, self-contained reproducibility
  * record - not just the final numbers, but when the plan was locked, when
  * results were viewed, and any changes made after that.
+ *
+ * Milestone 12: `schemaVersion` bumped from 1 to 2. Every downloadable
+ * project file before this milestone already included `analysisHistory`
+ * (Milestone 11 added the field itself, but never bumped this constant to
+ * mark that shape change) - schema version 1, as far as `src/storage/
+ * migrations.ts` is concerned, is that pre-Milestone-11 shape (identical to
+ * this one, minus `analysisHistory`). A real migration from that shape to
+ * this one lives there, not just an identity stub.
  */
 
 import type { Dataset } from './Dataset'
@@ -28,7 +37,7 @@ import type {
 import type { ChartCustomizationOptions, IntervalType } from '../components/charts/types'
 import type { NestedAggregationResult } from '../features/analysis-plan/aggregateByExperimentalUnit'
 
-export const PROJECT_FILE_SCHEMA_VERSION = 1
+export const PROJECT_FILE_SCHEMA_VERSION = 2
 
 export interface ProjectMetadata {
   /** When this project file was generated (ISO 8601). */

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type { AuditEntry } from '../../models/AuditEntry'
 import {
+  hydrateAnalysisPlanAudit,
   initialAnalysisPlanAuditState,
   lockAnalysisPlan,
   reachResults,
@@ -22,6 +23,13 @@ export interface UseAnalysisPlanAudit {
   markResultsReached: (design: ExperimentDesign) => void
   /** Starts a brand-new, empty audit trail (a new analysis session). */
   reset: () => void
+  /**
+   * Milestone 12: replaces the current state wholesale with one
+   * reconstructed from a reopened project's stored `analysisHistory` (see
+   * `hydrateAnalysisPlanAudit`) - unlike `lock`/`markResultsReached`, this
+   * never appends a new entry.
+   */
+  hydrate: (history: AuditEntry[], design: ExperimentDesign) => void
 }
 
 /**
@@ -44,11 +52,16 @@ export function useAnalysisPlanAudit(): UseAnalysisPlanAudit {
     setState(resetAnalysisPlanAudit())
   }, [])
 
+  const hydrate = useCallback((history: AuditEntry[], design: ExperimentDesign) => {
+    setState(hydrateAnalysisPlanAudit(history, design))
+  }, [])
+
   return {
     history: state.history,
     isLocked: state.lockedFields !== undefined,
     lock,
     markResultsReached,
     reset,
+    hydrate,
   }
 }

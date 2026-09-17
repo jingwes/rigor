@@ -111,3 +111,47 @@ export function reachResults(
 export function resetAnalysisPlanAudit(): AnalysisPlanAuditState {
   return initialAnalysisPlanAuditState
 }
+
+/**
+ * Milestone 12: reconstructs a full `AnalysisPlanAuditState` from a reopened
+ * project's stored `analysisHistory` plus its (unchanged) `experimentDesign`,
+ * so continuing a saved project neither fabricates a fresh, empty history
+ * nor forces the student to re-lock a plan they had already locked before
+ * saving.
+ *
+ * This never appends a new entry - `history` is kept exactly as given, an
+ * honest historical record. It only reconstructs the two pieces of DERIVED,
+ * session-only state a fresh page load would otherwise be missing:
+ *
+ *  - `lockedFields`: present (captured from `design`, the same design the
+ *    project was saved with) whenever `history` contains at least one
+ *    `'plan-locked'` entry - i.e. the plan was locked at some point before
+ *    the project was saved.
+ *  - `viewedSinceLock`: true when a `'results-viewed'` entry appears at or
+ *    after the most recent `'plan-locked'`/`'design-modified'` entry, so
+ *    resuming a project that already showed its results once doesn't log a
+ *    spurious duplicate `'results-viewed'` entry the moment results are
+ *    reached again.
+ */
+export function hydrateAnalysisPlanAudit(
+  history: AuditEntry[],
+  design: ExperimentDesign,
+): AnalysisPlanAuditState {
+  const isLocked = history.some((entry) => entry.action === 'plan-locked')
+  if (!isLocked) {
+    return { history, lockedFields: undefined, viewedSinceLock: false }
+  }
+
+  const lastBaselineIndex = history.findLastIndex(
+    (entry) => entry.action === 'plan-locked' || entry.action === 'design-modified',
+  )
+  const viewedSinceLock = history
+    .slice(lastBaselineIndex + 1)
+    .some((entry) => entry.action === 'results-viewed')
+
+  return {
+    history,
+    lockedFields: extractTrackedDesignFields(design),
+    viewedSinceLock,
+  }
+}

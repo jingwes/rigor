@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ExperimentDesign } from '../../models/ExperimentDesign'
 import type { AuditClock } from '../../models/AuditEntry'
 import {
+  hydrateAnalysisPlanAudit,
   initialAnalysisPlanAuditState,
   lockAnalysisPlan,
   reachResults,
@@ -163,5 +164,62 @@ describe('post-lock modification detection', () => {
 describe('resetAnalysisPlanAudit', () => {
   it('returns a fresh, empty state for starting a new analysis session', () => {
     expect(resetAnalysisPlanAudit()).toEqual(initialAnalysisPlanAuditState)
+  })
+})
+
+describe('Milestone 12: hydrateAnalysisPlanAudit (reconstructing state from a reopened project)', () => {
+  it('reconstructs an unlocked state from a history with no plan-locked entry', () => {
+    const state = hydrateAnalysisPlanAudit([], design())
+    expect(state).toEqual({ history: [], lockedFields: undefined, viewedSinceLock: false })
+  })
+
+  it('reconstructs a locked, already-viewed state, without appending anything to the given history', () => {
+    const clock = clockAt(['2026-09-17T17:42:00.000Z', '2026-09-17T17:42:05.000Z'])
+    let live = lockAnalysisPlan(initialAnalysisPlanAuditState, design(), clock)
+    live = reachResults(live, design(), clock)
+
+    const hydrated = hydrateAnalysisPlanAudit(live.history, design())
+
+    expect(hydrated.history).toEqual(live.history)
+    expect(hydrated.history).toBe(live.history) // never copies/reorders the given history
+    expect(hydrated.lockedFields).toEqual(live.lockedFields)
+    expect(hydrated.viewedSinceLock).toBe(true)
+  })
+
+  it('does not cause a spurious duplicate results-viewed when reachResults runs again after hydrating', () => {
+    const clock = clockAt(['2026-09-17T17:42:00.000Z', '2026-09-17T17:42:05.000Z'])
+    let live = lockAnalysisPlan(initialAnalysisPlanAuditState, design(), clock)
+    live = reachResults(live, design(), clock)
+
+    const hydrated = hydrateAnalysisPlanAudit(live.history, design())
+    const afterReachingAgain = reachResults(hydrated, design(), clock)
+
+    expect(afterReachingAgain.history).toEqual(live.history)
+  })
+
+  it('reconstructs viewedSinceLock=false when the plan was locked but results were never viewed before saving', () => {
+    const clock = clockAt(['2026-09-17T17:42:00.000Z'])
+    const live = lockAnalysisPlan(initialAnalysisPlanAuditState, design(), clock)
+
+    const hydrated = hydrateAnalysisPlanAudit(live.history, design())
+
+    expect(hydrated.viewedSinceLock).toBe(false)
+    expect(hydrated.lockedFields).toEqual(live.lockedFields)
+  })
+
+  it('only counts a results-viewed entry AFTER the most recent design-modified as "viewed since lock"', () => {
+    const clock = clockAt(['2026-09-17T17:42:00.000Z', '2026-09-17T17:42:05.000Z'])
+    let live = lockAnalysisPlan(initialAnalysisPlanAuditState, design(), clock)
+    live = reachResults(live, design(), clock)
+    const changedDesign = design({ groups: { count: 2, names: ['Control', 'High-dose'] } })
+    live = reachResults(live, changedDesign, clock)
+
+    // reachResults itself appends BOTH design-modified and a fresh
+    // results-viewed atomically, so hydrating right after should still see
+    // viewedSinceLock=true (the real, up-to-date design was already
+    // re-baselined by `reachResults` above).
+    const hydrated = hydrateAnalysisPlanAudit(live.history, changedDesign)
+    expect(hydrated.viewedSinceLock).toBe(true)
+    expect(hydrated.lockedFields).toEqual(live.lockedFields)
   })
 })
